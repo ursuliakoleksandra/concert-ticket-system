@@ -1,0 +1,143 @@
+# Ticket Resale: Nginx (єдина точка входу) → 3 stateless-екземпляри API → PostgreSQL + Redis
+#
+#   docker compose up -d --build        — підняти весь стек
+#   http://localhost:8080               — єдина зовнішня адреса (Nginx)
+#
+# Екземпляри API, PostgreSQL і Redis знаходяться лише у внутрішній мережі backend
+# (internal: true) і не мають опублікованих портів.
+
+x-app: &app
+  build: .
+  image: ticket-resale-app:latest
+  networks:
+    - backend
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+    interval: 5s
+    timeout: 3s
+    retries: 3
+    start_period: 60s
+  # Однакові ліміти ресурсів для кожного вузла — для коректного scale-out експерименту
+  cpus: "1.0"
+  mem_limit: 768m
+  stop_grace_period: 25s
+  restart: unless-stopped
+
+x-app-env: &app-env
+  DB_URL: jdbc:postgresql://postgres:5432/ticket_resale
+  DB_USER: resale
+  DB_PASSWORD: resale
+  REDIS_HOST: redis
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: resale-postgres
+    environment:
+      POSTGRES_DB: ticket_resale
+      POSTGRES_USER: resale
+      POSTGRES_PASSWORD: resale
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resale -d ticket_resale"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: resale-redis
+    # AOF: бронювання переживають перезапуск Redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  app1:
+    <<: *app
+    container_name: resale-app1
+    hostname: app1
+    environment:
+      <<: *app-env
+      INSTANCE_ID: app1
+
+  app2:
+    <<: *app
+    container_name: resale-app2
+    hostname: app2
+    environment:
+      <<: *app-env
+      INSTANCE_ID: app2
+      # Синтетична затримка для експерименту з повільним вузлом (scripts/lab3-slow-node.sh)
+      ARTIFICIAL_DELAY_MS: ${APP2_DELAY_MS:-0}
+
+  app3:
+    <<: *app
+    container_name: resale-app3
+    hostname: app3
+    environment:
+      <<: *app-env
+      INSTANCE_ID: app3
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: resale-lb
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Каталог (а не окремий файл) — щоб зміна active.conf була видна без перестворення контейнера
+      - ./nginx/upstreams:/etc/nginx/upstreams:ro
+    networks:
+      - public
+      - backend
+    depends_on:
+      app1:
+        condition: service_healthy
+      app2:
+        condition: service_healthy
+      app3:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Генератор навантаження. Запускається лише явно: docker compose run --rm k6 run /scripts/load.js
+  k6:
+    image: grafana/k6:0.54.0
+    profiles: ["loadtest"]
+    user: "0:0"
+    environment:
+      BASE_URL: http://nginx
+    volumes:
+      - ./loadtest:/scripts:ro
+      - ./results:/results
+    networks:
+      - public
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  # Зовнішня мережа: клієнт ↔ балансувальник
+  public:
+    driver: bridge
+  # Внутрішня мережа без виходу назовні: балансувальник ↔ API ↔ сховища
+  backend:
+    driver: bridge
+    internal: true
