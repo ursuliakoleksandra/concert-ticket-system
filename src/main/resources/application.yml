@@ -1,0 +1,63 @@
+server:
+  port: 8080
+  # Під час docker stop нові запити не приймаються, а поточні — завершуються
+  shutdown: graceful
+
+spring:
+  application:
+    name: ticket-resale
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/ticket_resale}
+    username: ${DB_USER:resale}
+    password: ${DB_PASSWORD:resale}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      connection-timeout: 5000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+# Ідентифікація екземпляра та параметри експериментів (ЛР2, ЛР3)
+app:
+  # Повертається в заголовку X-Instance-ID кожної відповіді
+  instance-id: ${INSTANCE_ID:${HOSTNAME:local}}
+  # Штучна затримка кожного запиту, мс (0 — вимкнено). Для експерименту з повільним вузлом
+  artificial-delay-ms: ${ARTIFICIAL_DELAY_MS:0}
+
+resale:
+  rules:
+    # Максимальна ціна перепродажу відносно номіналу (1.20 = +20%)
+    max-markup: 1.20
+    # Скільки квитків на одну подію може купити один покупець через перепродаж
+    max-tickets-per-event: 4
+  hold:
+    # Тривалість тимчасового бронювання оголошення покупцем (зберігається в Redis з TTL)
+    ttl: 5m
+  rate-limit:
+    # Ліміт запитів бронювання/купівлі на одного користувача за хвилину (лічильник у Redis)
+    requests-per-minute: ${RATE_LIMIT_PER_MINUTE:20}
