@@ -1,0 +1,8 @@
+target/
+.git/
+.idea/
+*.md
+scripts/
+nginx/
+loadtest/
+results/
