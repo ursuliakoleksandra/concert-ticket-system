@@ -33,6 +33,10 @@ x-app-env: &app-env
   DB_USER: resale
   DB_PASSWORD: resale
   REDIS_HOST: redis
+  # ЛР4/ЛР5: кеш вмикається/вимикається без перезбирання образу
+  CACHE_ENABLED: ${CACHE_ENABLED:-true}
+  # ЛР5: для навантажувальних тестів ліміт піднімається, інакше k6 отримував би 429
+  RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-20}
 
 services:
   postgres:
@@ -56,8 +60,10 @@ services:
   redis:
     image: redis:7-alpine
     container_name: resale-redis
-    # AOF: бронювання переживають перезапуск Redis
-    command: ["redis-server", "--appendonly", "yes"]
+    # AOF: бронювання переживають перезапуск Redis.
+    # maxmemory + volatile-lru (ЛР4): при заповненні пам'яті витісняються найдавніше використані ключі
+    # з TTL (кеш, бронювання, лічильники); ключі версій кешу без TTL не витісняються.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru"]
     volumes:
       - redisdata:/data
     networks:
@@ -116,15 +122,17 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Генератор навантаження. Запускається лише явно: docker compose run --rm k6 run /scripts/load.js
+  # Генератор навантаження. Запускається лише явно: docker compose run --rm k6 run /scripts/<сценарій>.js
   k6:
     image: grafana/k6:0.54.0
     profiles: ["loadtest"]
     user: "0:0"
+    # ЛР5: обмеження генератора навантаження, щоб він не конкурував із системою за всі ядра хоста
+    cpus: "2.0"
     environment:
       BASE_URL: http://nginx
     volumes:
-      - ./loadtest:/scripts:ro
+      - ./load-tests:/scripts:ro
       - ./results:/results
     networks:
       - public
