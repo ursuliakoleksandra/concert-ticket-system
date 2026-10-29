@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.ticketresale.cache.ListingCache;
 import com.ticketresale.common.exception.ConflictException;
 import com.ticketresale.common.exception.NotFoundException;
 import com.ticketresale.event.EventDtos.EventRequest;
@@ -17,10 +18,12 @@ public class EventService {
 
     private final EventRepository events;
     private final TicketRepository tickets;
+    private final ListingCache listingCache;
 
-    public EventService(EventRepository events, TicketRepository tickets) {
+    public EventService(EventRepository events, TicketRepository tickets, ListingCache listingCache) {
         this.events = events;
         this.tickets = tickets;
+        this.listingCache = listingCache;
     }
 
     @Transactional
@@ -52,5 +55,7 @@ public class EventService {
             throw new ConflictException("Неможливо видалити подію, для якої вже випущено квитки");
         }
         events.delete(event);
+        // Кешована (порожня) сторінка оголошень видаленої події не повинна жити до кінця TTL
+        listingCache.invalidateAfterCommit(id);
     }
 }

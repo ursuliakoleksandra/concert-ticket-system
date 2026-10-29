@@ -13,6 +13,7 @@ LB_URL="${LB_URL:-http://localhost:8080}"
 
 LAST_STATUS=""
 LAST_INSTANCE=""
+LAST_CACHE=""
 LAST_BODY=""
 
 # Розбір сирої HTTP-відповіді (curl -i) у LAST_STATUS / LAST_INSTANCE / LAST_BODY
@@ -20,12 +21,14 @@ _parse_response() {
     local raw="$1"
     LAST_STATUS=$(printf '%s\n' "$raw" | awk 'NR == 1 { print $2 }') || true
     LAST_INSTANCE=$(printf '%s\n' "$raw" | awk 'tolower($1) == "x-instance-id:" { print $2; exit }' | tr -d '\r') || true
+    LAST_CACHE=$(printf '%s\n' "$raw" | awk 'tolower($1) == "x-cache:" { print $2; exit }' | tr -d '\r') || true
     LAST_BODY=$(printf '%s\n' "$raw" | awk 'body { print } /^\r?$/ { body = 1 }') || true
 }
 
 _print_last() {
     local label="$1"
-    printf '%-34s → HTTP %s  [X-Instance-ID: %s]\n' "$label" "$LAST_STATUS" "${LAST_INSTANCE:--}"
+    printf '%-34s → HTTP %s  [X-Instance-ID: %s]%s\n' "$label" "$LAST_STATUS" "${LAST_INSTANCE:--}" \
+        "${LAST_CACHE:+  [X-Cache: $LAST_CACHE]}"
     if [[ -n "$LAST_BODY" ]]; then
         printf '      %s\n' "$LAST_BODY"
     fi
@@ -70,6 +73,25 @@ expect_status() {
         exit 1
     fi
     printf '  ✓ %s\n' "$expected"
+}
+
+# ЛР4: перевірка джерела даних відповіді (заголовок X-Cache)
+expect_cache() {
+    local expected="$1"
+    if [[ "$LAST_CACHE" != "$expected" ]]; then
+        printf '  ✗ Очікувався X-Cache: %s, отримано %s\n' "$expected" "${LAST_CACHE:--}" >&2
+        exit 1
+    fi
+    printf '  ✓ X-Cache: %s\n' "$expected"
+}
+
+expect_body_not_contains() {
+    local needle="$1"
+    if [[ "$LAST_BODY" == *"$needle"* ]]; then
+        printf '  ✗ У відповіді не повинно бути «%s»\n' "$needle" >&2
+        exit 1
+    fi
+    printf '  ✓ не містить %s\n' "$needle"
 }
 
 expect_body_contains() {
@@ -124,10 +146,40 @@ create_listing_on() {
 }
 
 # Запуск k6 (генератор навантаження) у мережі public — звертається лише до балансувальника.
-#   run_k6 TAG [VUS] [DURATION]
+#   run_k6 TAG [VUS] [DURATION]                    — сценарій ЛР3 (load-tests/load.js)
 run_k6() {
     local tag="$1" vus="${2:-30}" duration="${3:-30s}"
+    k6_run load.js TAG="$tag" VUS="$vus" DURATION="$duration"
+}
+
+# Запуск довільного сценарію з load-tests/ зі змінними оточення (ЛР5)
+#   k6_run scenario-a-read.js TAG=... STAGES=10,50 STAGE_DURATION=30s
+k6_run() {
+    local script="$1"; shift
+    local envs=()
+    for kv in "$@"; do envs+=(-e "$kv"); done
     mkdir -p results
-    docker compose run --rm -T -e TAG="$tag" -e VUS="$vus" -e DURATION="$duration" \
-        k6 run --quiet /scripts/load.js
+    docker compose run --rm -T ${envs[@]+"${envs[@]}"} k6 run --quiet "/scripts/$script"
+}
+
+# Перестворення вузлів API з іншими змінними оточення (кеш, rate limit) — ЛР5.
+#   apps_with_env CACHE_ENABLED=false RATE_LIMIT_PER_MINUTE=1000000
+apps_with_env() {
+    step "Перестворення app1..app3: $*"
+    env "$@" docker compose up -d --no-deps app1 app2 app3
+    wait_healthy app1
+    wait_healthy app2
+    wait_healthy app3
+    lb_reload
+}
+
+# Кількість транзакцій PostgreSQL з моменту старту (commit + rollback) — міра навантаження на БД
+db_transactions() {
+    docker compose exec -T postgres psql -U resale -d ticket_resale -tAc \
+        "select xact_commit + xact_rollback from pg_stat_database where datname = 'ticket_resale'" | tr -d '\r '
+}
+
+# Знімок CPU/пам'яті контейнерів (для звітів ЛР5)
+stats_snapshot() {
+    docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}'
 }
