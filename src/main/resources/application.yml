@@ -31,6 +31,7 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       timeout: 2s
+      connect-timeout: 500ms
 
 management:
   endpoints:
@@ -58,6 +59,13 @@ resale:
   hold:
     # Тривалість тимчасового бронювання оголошення покупцем (зберігається в Redis з TTL)
     ttl: 5m
+  cache:
+    # Розподілений кеш оголошень події в Redis (ЛР4). false — режим Cache Disabled (ЛР5)
+    enabled: ${CACHE_ENABLED:true}
+    # Межа застарівання: навіть якщо інвалідацію пропущено (Redis був недоступний), запис живе не довше
+    listings-ttl: 30s
+    # ±20 % до TTL, щоб записи, створені одночасно, не зникали одночасно (Cache Avalanche)
+    ttl-jitter: 0.2
   rate-limit:
     # Ліміт запитів бронювання/купівлі на одного користувача за хвилину (лічильник у Redis)
     requests-per-minute: ${RATE_LIMIT_PER_MINUTE:20}

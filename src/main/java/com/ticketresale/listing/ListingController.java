@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.ticketresale.cache.CacheResult;
 import com.ticketresale.listing.ListingDtos.CreateListingRequest;
 
 import jakarta.validation.Valid;
@@ -29,6 +30,7 @@ import jakarta.validation.Valid;
 public class ListingController {
 
     static final String USER_HEADER = "X-User-Id";
+    static final String CACHE_HEADER = "X-Cache";
 
     private final ListingService listingService;
 
@@ -45,15 +47,19 @@ public class ListingController {
 
     @GetMapping("/api/listings/{id}")
     public ListingResponse get(@PathVariable Long id) {
-        return ListingResponse.from(listingService.get(id));
+        return listingService.getView(id);
     }
 
+    /** Кешований endpoint (ЛР4). Заголовок X-Cache: HIT / MISS / BYPASS / DISABLED — джерело даних. */
     @GetMapping("/api/events/{eventId}/listings")
-    public Page<ListingResponse> activeForEvent(
+    public ResponseEntity<Page<ListingResponse>> activeForEvent(
             @PathVariable Long eventId,
             @RequestParam(required = false) BigDecimal maxPrice,
             @PageableDefault(size = 20, sort = "price", direction = Sort.Direction.ASC) Pageable pageable) {
-        return listingService.findActiveByEvent(eventId, maxPrice, pageable);
+        CacheResult<Page<ListingResponse>> result = listingService.findActiveByEvent(eventId, maxPrice, pageable);
+        return ResponseEntity.ok()
+                .header(CACHE_HEADER, result.status().name())
+                .body(result.value());
     }
 
     @DeleteMapping("/api/listings/{id}")
