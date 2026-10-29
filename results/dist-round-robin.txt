@@ -1,0 +1,9 @@
+Профіль: Round Robin (за замовчуванням): запити по черзі на кожен вузол
+Запитів: 30 → http://localhost:8080/api/events
+
+Послідовність: app1 app2 app3 app1 app2 app3 app1 app2 app3 app1 app2 app3 app1 app2 app3 app1 app2 app3 app1 app2 app3 app1 app2 app3 app1 app2 app3 app1 app2 app3 
+
+Instance     Запитів Частка
+app1               10      33%
+app2               10      33%
+app3               10      33%

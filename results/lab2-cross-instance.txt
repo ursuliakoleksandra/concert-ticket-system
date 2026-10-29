@@ -1,0 +1,39 @@
+
+=== 1. CRUD події: POST → app1, GET → app2, PUT → app2, GET → app1 ===
+[app1] POST /api/events            → HTTP 201  [X-Instance-ID: app1]
+      {"id":3,"title":"Джазовий вечір","venue":"Філармонія","startsAt":"2030-03-15T19:00:00Z","faceValue":400}
+  ✓ 201
+[app2] GET /api/events/3           → HTTP 200  [X-Instance-ID: app2]
+      {"id":3,"title":"Джазовий вечір","venue":"Філармонія","startsAt":"2030-03-15T19:00:00Z","faceValue":400.00}
+  ✓ 200
+  ✓ містить "title":"Джазовий вечір"
+[app2] PUT /api/events/3           → HTTP 200  [X-Instance-ID: app2]
+      {"id":3,"title":"Джазовий вечір (перенесено)","venue":"Філармонія","startsAt":"2030-03-22T19:00:00Z","faceValue":400}
+  ✓ 200
+[app1] GET /api/events/3           → HTTP 200  [X-Instance-ID: app1]
+      {"id":3,"title":"Джазовий вечір (перенесено)","venue":"Філармонія","startsAt":"2030-03-22T19:00:00Z","faceValue":400.00}
+  ✓ 200
+  ✓ містить (перенесено)
+
+=== 2. Перепродаж: оголошення → app2, бронювання → app3, перевірка → app1, купівля → app2/app1 ===
+[app1] POST /api/tickets           → HTTP 201  [X-Instance-ID: app1]
+      {"id":5,"eventId":3,"eventTitle":"Джазовий вечір (перенесено)","ownerId":1,"seat":"Партер, ряд 5, місце 10"}
+  ✓ 201
+[app2] POST /api/listings          → HTTP 201  [X-Instance-ID: app2]
+      {"id":3,"ticketId":5,"seat":"Партер, ряд 5, місце 10","eventId":3,"sellerId":1,"price":450,"status":"ACTIVE","createdAt":"2026-10-21T21:00:20.752727703Z"}
+  ✓ 201
+[app3] POST /api/listings/3/hold   → HTTP 201  [X-Instance-ID: app3]
+      {"listingId":3,"buyerId":3,"expiresInSeconds":299}
+  ✓ 201
+[app1] GET /api/listings/3/hold    → HTTP 200  [X-Instance-ID: app1]
+      {"listingId":3,"buyerId":3,"expiresInSeconds":298}
+  ✓ 200
+  ✓ містить "buyerId":3
+[app2] POST /api/listings/3/purchase → HTTP 409  [X-Instance-ID: app2]
+      {"type":"about:blank","title":"Конфлікт стану","status":409,"detail":"Оголошення тимчасово заброньоване іншим покупцем","instance":"/api/listings/3/purchase"}
+  ✓ 409
+[app1] POST /api/listings/3/purchase → HTTP 201  [X-Instance-ID: app1]
+      {"id":1,"listingId":3,"eventId":3,"buyerId":3,"sellerId":1,"price":450.00,"createdAt":"2026-10-21T21:00:29.061444623Z"}
+  ✓ 201
+[app3] GET /api/listings/3         → HTTP 500  [X-Instance-ID: app3]
+      {"type":"about:blank","title":"Внутрішня помилка сервера","status":500,"detail":"Сталася неочікувана помилка","instance":"/api/listings/3"}

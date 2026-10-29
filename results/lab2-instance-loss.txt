@@ -1,0 +1,45 @@
+
+=== 1. Підготовка: оголошення та бронювання на app1 ===
+[app1] POST /api/events            → HTTP 201  [X-Instance-ID: app1]
+      {"id":4,"title":"Демо-подія ЛР2","venue":"Чернівці","startsAt":"2030-06-01T18:00:00Z","faceValue":500}
+  ✓ 201
+[app1] POST /api/tickets           → HTTP 201  [X-Instance-ID: app1]
+      {"id":6,"eventId":4,"eventTitle":"Демо-подія ЛР2","ownerId":1,"seat":"Сектор A, місце 14103"}
+  ✓ 201
+[app1] POST /api/listings          → HTTP 201  [X-Instance-ID: app1]
+      {"id":4,"ticketId":6,"seat":"Сектор A, місце 14103","eventId":4,"sellerId":1,"price":550,"status":"ACTIVE","createdAt":"2026-10-21T21:00:35.308787433Z"}
+  ✓ 201
+[app1] POST /api/listings/4/hold   → HTTP 201  [X-Instance-ID: app1]
+      {"listingId":4,"buyerId":3,"expiresInSeconds":299}
+  ✓ 201
+
+=== 2. Аварійна зупинка app1 (docker kill — SIGKILL, без graceful shutdown) ===
+resale-app1: exited (Exited (137) Less than a second ago)
+resale-app2: running (Up 15 minutes (healthy))
+resale-app3: running (Up 15 minutes (healthy))
+resale-lb: running (Up 14 minutes)
+resale-postgres: running (Up 15 minutes (healthy))
+resale-redis: running (Up 15 minutes (healthy))
+
+=== 3. app2 підхоплює сценарій: бронювання на місці, купівля успішна ===
+[app2] GET /api/listings/4/hold    → HTTP 200  [X-Instance-ID: app2]
+      {"listingId":4,"buyerId":3,"expiresInSeconds":296}
+  ✓ 200
+  ✓ містить "buyerId":3
+[app2] POST /api/listings/4/purchase → HTTP 201  [X-Instance-ID: app2]
+      {"id":2,"listingId":4,"eventId":4,"buyerId":3,"sellerId":1,"price":550.00,"createdAt":"2026-10-21T21:00:41.388223381Z"}
+  ✓ 201
+[app3] GET /api/users/3/purchases  → HTTP 200  [X-Instance-ID: app3]
+      [{"id":2,"listingId":4,"eventId":4,"buyerId":3,"sellerId":1,"price":550.00,"createdAt":"2026-10-21T21:00:41.388223Z"},{"id":1,"listingId":3,"eventId":3,"buyerId":3,"sellerId":1,"price":450.00,"createdAt":"2026-10-21T21:00:29.061445Z"}]
+  ✓ 200
+  ✓ містить "listingId":4
+
+=== 4. Повторна купівля того ж оголошення іншим покупцем через app3 → 409 ===
+[app3] POST /api/listings/4/purchase → HTTP 409  [X-Instance-ID: app3]
+      {"type":"about:blank","title":"Конфлікт стану","status":409,"detail":"Оголошення id=4 вже неактивне (статус SOLD)","instance":"/api/listings/4/purchase"}
+  ✓ 409
+
+=== 5. Перезапуск app1: стан не втрачено ===
+Очікування готовності app1.............. — готовий
+[app1] GET /api/listings/4         → HTTP 500  [X-Instance-ID: app1]
+      {"type":"about:blank","title":"Внутрішня помилка сервера","status":500,"detail":"Сталася неочікувана помилка","instance":"/api/listings/4"}
