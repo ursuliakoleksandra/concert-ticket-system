@@ -4,5 +4,5 @@ target/
 *.md
 scripts/
 nginx/
-loadtest/
+load-tests/
 results/
