@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.PessimisticLockingFailureException;
+import org.springframework.data.redis.RedisSystemException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -102,7 +103,8 @@ public class GlobalExceptionHandler {
      * Недоступне спільне сховище (PostgreSQL або Redis) чи вичерпано пул з'єднань → 503.
      * Балансувальник трактує 503 як збій вузла (proxy_next_upstream http_503).
      */
-    @ExceptionHandler({DataAccessResourceFailureException.class, CannotCreateTransactionException.class})
+    @ExceptionHandler({DataAccessResourceFailureException.class, CannotCreateTransactionException.class,
+            RedisSystemException.class})
     ProblemDetail handleStorageUnavailable(Exception ex) {
         log.error("Сховище даних недоступне: {}", ex.getMessage());
         return problem(HttpStatus.SERVICE_UNAVAILABLE, "Сервіс тимчасово недоступний",
