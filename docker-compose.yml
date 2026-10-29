@@ -21,7 +21,8 @@ x-app: &app
     interval: 5s
     timeout: 3s
     retries: 3
-    start_period: 60s
+    # Spring Boot на 1 CPU стартує ~70 с; запас, щоб вузол не позначався unhealthy під час старту
+    start_period: 150s
   # Однакові ліміти ресурсів для кожного вузла — для коректного scale-out експерименту
   cpus: "1.0"
   mem_limit: 768m
@@ -102,7 +103,8 @@ services:
       INSTANCE_ID: app3
 
   nginx:
-    image: nginx:1.27-alpine
+    # 1.27.3+ потрібна для параметра resolve в upstream (динамічні IP вузлів)
+    image: nginx:1.27.5-alpine
     container_name: resale-lb
     ports:
       - "8080:80"
