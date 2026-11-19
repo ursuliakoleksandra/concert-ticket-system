@@ -165,23 +165,12 @@ _Вивід — `results/lab6-stale-read.txt`._
 | Single Primary | `READ_REPLICA_ENABLED=false` | primary |
 | Primary + Replica | `READ_REPLICA_ENABLED=true` | replica |
 
-_Таблиці заповнюються з `results/lab6-read-scaling.md` після запуску скрипта._
+Скрипт автоматично формує `results/lab6-read-scaling.md` з двома таблицями: Throughput, p50/p95/p99 і Error Rate для кожного ступеня та кожної топології; транзакції за секунду й CPU на primary і replica.
 
-| Топологія | VUs | Throughput, RPS | p50, мс | p95, мс | p99, мс | Error Rate, % |
-|---|---|---|---|---|---|---|
-| Single Primary | 25 | | | | | |
-| Single Primary | 50 | | | | | |
-| Single Primary | 100 | | | | | |
-| Single Primary | 200 | | | | | |
-| Primary + Replica | 25 | | | | | |
-| Primary + Replica | 50 | | | | | |
-| Primary + Replica | 100 | | | | | |
-| Primary + Replica | 200 | | | | | |
-
-| Топологія | Транзакцій/с primary | Транзакцій/с replica | CPU primary | CPU replica |
-|---|---|---|---|---|
-| Single Primary | | | | |
-| Primary + Replica | | | | |
+**Очікуваний результат (гіпотеза до вимірювання).** У ЛР5 первинним вузьким місцем був CPU вузлів API, а не СУБД. Тому перенесення читань на репліку навряд чи помітно збільшить Throughput. Очікуваний ефект — перерозподіл навантаження між вузлами СУБД:
+- у топології Primary + Replica транзакції читання й CPU мають перейти з primary на репліку;
+- primary звільняється для запису, і запас пропускної здатності на запис зростає;
+- приріст RPS очікується лише тоді, коли вузьким місцем стає сама СУБД (наприклад, за слабшого ліміту CPU на primary).
 
 ### 11.9. Теоретичні питання
 
