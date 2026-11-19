@@ -1,10 +1,10 @@
 # Ticket Resale — платформа перепродажу квитків
 
-Лабораторні роботи № 1–5: проєктування архітектури та базовий прототип (ЛР1), архітектура без стану (ЛР2), горизонтальне масштабування та балансування навантаження (ЛР3), розподілене кешування (ЛР4), навантажувальне тестування та Performance Baseline (ЛР5).
+Лабораторні роботи № 1–8: проєктування архітектури та базовий прототип (ЛР1), архітектура без стану (ЛР2), горизонтальне масштабування та балансування навантаження (ЛР3), розподілене кешування (ЛР4), навантажувальне тестування та Performance Baseline (ЛР5), реплікація БД і Read/Write Separation (ЛР6), шардинг даних (ЛР7), інженерія стійкості кешу (ЛР8).
 
 Платформа дозволяє власникам квитків виставляти їх на перепродаж, а покупцям — бронювати й купувати квитки на події. Ціна перепродажу обмежена (не більше +20% до номіналу), кількість квитків на одну подію для одного покупця обмежена (4 шт.), частота бронювань і купівель обмежена (20 на хвилину на користувача) — для протидії ботам і масовому скуповуванню.
 
-**Стек:** Java 21, Spring Boot 3.3, Spring Data JPA (Hibernate 6), PostgreSQL 16, Redis 7, Flyway, Nginx 1.27, Docker Compose, k6, springdoc-openapi.
+**Стек:** Java 21, Spring Boot 3.3, Spring Data JPA (Hibernate 6), PostgreSQL 16 (primary + streaming replica, 2 шарди), Redis 7, Flyway, Nginx 1.27, Docker Compose, k6, springdoc-openapi.
 
 **Зміст**
 
@@ -14,13 +14,16 @@
 8. [ЛР3. Горизонтальне масштабування та балансування](#8-лр3-горизонтальне-масштабування-та-балансування-навантаження)
 9. [ЛР4. Розподілене кешування](#9-лр4-розподілене-кешування-distributed-caching)
 10. [ЛР5. Навантажувальне тестування та Performance Baseline](#10-лр5-навантажувальне-тестування-та-performance-baseline)
-11. [Структура репозиторію](#11-структура-репозиторію) · 12. [RACI](#12-розподіл-відповідальності-raci)
+11. [ЛР6. Реплікація БД та Read/Write Separation](#11-лр6-реплікація-бази-даних-та-readwrite-separation) — повний звіт: [docs/lab6-replication.md](docs/lab6-replication.md)
+12. [ЛР7. Шардинг](#12-лр7-масштабування-даних-шардинг) — повний звіт: [docs/lab7-sharding.md](docs/lab7-sharding.md)
+13. [ЛР8. Інженерія стійкості](#13-лр8-інженерія-стійкості-cache-stampede-thundering-herd-cache-avalanche-cache-penetration) — повний звіт: [docs/lab8-resilience.md](docs/lab8-resilience.md)
+14. [Структура репозиторію](#14-структура-репозиторію) · 15. [RACI](#15-розподіл-відповідальності-raci)
 
 ---
 
 ## 1. Запуск
 
-Потрібно: Docker з плагіном Compose (Docker Desktop або Docker Engine), 4+ ядра CPU і 6+ ГБ RAM для повного стеку з трьома екземплярами. Демонстраційні скрипти — bash (Linux, macOS або Git Bash у Windows).
+Потрібно: Docker з плагіном Compose (Docker Desktop або Docker Engine), 4+ ядра CPU і 6+ ГБ RAM, доступних Docker, для повного стеку (3 екземпляри API, 4 вузли PostgreSQL, Redis, Nginx). Демонстраційні скрипти — bash (Linux, macOS або Git Bash у Windows).
 
 ```bash
 git clone https://github.com/<акаунт>/concert-ticket-system.git
@@ -28,7 +31,7 @@ cd concert-ticket-system
 docker compose up -d --build
 ```
 
-Команда піднімає PostgreSQL, Redis, три екземпляри API (`app1`, `app2`, `app3`) і балансувальник Nginx. Nginx стартує лише після того, як усі екземпляри пройшли healthcheck (≈ 40–60 с).
+Команда піднімає PostgreSQL primary і репліку (ЛР6), два шарди журналу операцій (ЛР7), Redis, три екземпляри API (`app1`, `app2`, `app3`) і балансувальник Nginx. Nginx стартує лише після того, як усі екземпляри пройшли healthcheck (≈ 40–60 с).
 
 | Ресурс | Адреса |
 |---|---|
@@ -37,7 +40,7 @@ docker compose up -d --build
 | Swagger UI | http://localhost:8080/swagger-ui.html |
 | OpenAPI JSON | http://localhost:8080/v3/api-docs |
 
-Назовні опубліковано лише порт балансувальника. Екземпляри API, PostgreSQL і Redis доступні тільки у внутрішній мережі `backend` (див. [8.2](#82-єдина-точка-входу-та-інкапсуляція-мережі)).
+Назовні опубліковано лише порт балансувальника. Екземпляри API, вузли PostgreSQL і Redis доступні тільки у внутрішній мережі `backend` (див. [8.2](#82-єдина-точка-входу-та-інкапсуляція-мережі)).
 
 Схема БД і демо-дані створюються автоматично міграціями Flyway (`src/main/resources/db/migration`) під час старту застосунку. При одночасному старті кількох екземплярів міграцію виконує лише один: Flyway бере advisory lock PostgreSQL.
 
@@ -73,6 +76,20 @@ curl localhost:8080/api/users/4
 | `scripts/lab5-environment.sh` | ЛР5 | Фіксація конфігурації тестового середовища |
 | `scripts/lab5-cache-impact.sh` | ЛР5 | Cache Disabled проти Warm Cache під навантаженням |
 | `scripts/lab5-scaling.sh` | ЛР5 | Scaling Efficiency Factor для 1, 2, 3 вузлів |
+| `scripts/lab6-run-all.sh` | ЛР6 | Усі демонстрації та вимірювання ЛР6 |
+| `scripts/lab6-replication-demo.sh` | ЛР6 | Запис на primary → рядок на репліці; репліка відхиляє запис |
+| `scripts/lab6-stale-read.sh [затримка]` | ЛР6 | Stale Read при Replication Lag і захист Read-After-Write Consistency |
+| `scripts/lab6-failover.sh` | ЛР6 | Відмова репліки (Primary Fallback) і primary (режим лише читання) |
+| `scripts/lab6-read-scaling.sh` | ЛР6 | Single Primary проти Primary + Replica під навантаженням |
+| `scripts/lab7-run-all.sh` | ЛР7 | Усі демонстрації та вимірювання ЛР7 |
+| `scripts/lab7-routing-demo.sh` | ЛР7 | Детермінована маршрутизація, Shard-Local проти Cross-Shard, модель решардингу |
+| `scripts/lab7-distribution.sh` | ЛР7 | Матриця розподілу даних для трьох функцій і трьох профілів ключів |
+| `scripts/lab7-hot-shard.sh` | ЛР7 | Hot Shard (key % N) і вирівнювання (Consistent Hashing) |
+| `scripts/lab7-benchmark.sh` | ЛР7 | Single Node проти Sharded Cluster |
+| `scripts/lab8-run-all.sh` | ЛР8 | Усі експерименти ЛР8 |
+| `scripts/lab8-stampede.sh` | ЛР8 | Cache Stampede: 500 VUs на холодний ключ без захисту і з захистом |
+| `scripts/lab8-avalanche.sh` | ЛР8 | Cache Avalanche: TTL без jitter і з jitter |
+| `scripts/lab8-penetration.sh` | ЛР8 | Cache Penetration: без і з Negative Caching |
 
 Скрипти навантаження запускають k6 у контейнері (окремо встановлювати не потрібно); результати зберігаються в каталозі `results/`.
 
@@ -625,7 +642,7 @@ _Джерело: `results/slow-node-round-robin.txt`, `results/slow-node-least-c
 | Рівень | Механізм | Параметри |
 |---|---|---|
 | Nginx — пасивний | Збої реальних запитів (`error`, `timeout`, `502/503/504`) рахуються для вузла; після `max_fails` збоїв вузол виключається з пулу на `fail_timeout`, потім отримує пробний запит | `max_fails=2 fail_timeout=10s`, `proxy_connect_timeout 1s` |
-| Nginx — повтор запиту | Запит, що не вдався на одному вузлі, повторюється на наступному; клієнт отримує успішну відповідь | `proxy_next_upstream error timeout http_502 http_503 http_504`, до 3 спроб |
+| Nginx — повтор запиту | Запит, що не вдався на одному вузлі, повторюється на наступному; клієнт отримує успішну відповідь | `proxy_next_upstream error timeout http_502 http_504`, до 3 спроб (`http_503` прибрано в ЛР6, див. [docs/lab6-replication.md, 11.7](docs/lab6-replication.md#117-відмовостійкість-вузлів-субд-graceful-degradation)) |
 | Docker — активний | Docker кожні 5 с викликає `GET /health` усередині контейнера; стан `unhealthy` видно в `docker compose ps`, Nginx стартує лише після `healthy` усіх вузлів | `interval 5s, timeout 3s, retries 3` |
 | Spring — graceful shutdown | При `docker stop` вузол перестає приймати нові з'єднання й завершує поточні запити | `server.shutdown: graceful`, до 20 с |
 
@@ -860,10 +877,18 @@ bash scripts/lab4-cache-demo.sh | tee results/lab4-cache-demo.txt
 
 | Запит | N | avg, мс | p50, мс | p95, мс | max, мс |
 |---|---|---|---|---|---|
-| Cold (Cache MISS) | | | | | |
-| Hot (Cache HIT) | | | | | |
+| Cold (Cache MISS) | 30 | 88,0 | 27,5 | 870,2 | 962,6 |
+| Hot (Cache HIT) | 30 | 19,5 | 16,3 | 41,8 | 42,2 |
 
-_Заповнюється з `results/lab4-latency.txt` після запуску скрипта. Під навантаженням ефект кешу на пропускну здатність і на БД вимірює ЛР5 (10.7)._
+`X-Cache`: холодних MISS 30/30, гарячих HIT 30/30 (`results/lab4-latency.txt`).
+
+**Аналіз.**
+- Медіана гарячого запиту (16,3 мс) у 1,7 раза нижча за холодну (27,5 мс): при HIT вузол не виконує SQL-запит і не відображає сутності Hibernate у DTO, а лише десеріалізує готовий JSON з Redis.
+- Середнє значення й p95 холодних запитів (88,0 мс і 870,2 мс) визначаються кількома першими запитами: вимірювання виконано через 2 хв після перестворення вузлів, коли код доступу до БД ще не скомпільовано JIT. Тому для порівняння показовою є медіана, а не середнє.
+- Розкид гарячих запитів малий (p95 = 41,8 мс, max = 42,2 мс): час HIT не залежить від стану БД.
+- Значна частина з 16 мс припадає на `curl`, Nginx і мережу Docker, однакові для обох типів запитів. Тому різниця саме у вузлі більша, ніж показує відношення 27,5 / 16,3.
+
+Інвалідація (POST оголошення, купівля, DELETE) і fallback без Redis (BYPASS, `DEGRADED`, купівля 201, бронювання 503) пройшли всі перевірки; повний вивід — у `results/lab4-cache-demo.txt`. Після `docker compose start redis` вузли перепідключаються автоматично (у журналі вузла: `Reconnected to redis`), і читання знову обслуговуються кешем. Під навантаженням ефект кешу на пропускну здатність і на БД вимірює ЛР5 (10.7).
 
 ### 9.8. Теоретичні питання
 
@@ -907,7 +932,23 @@ bash scripts/lab5-run-all.sh
 Специфікація фіксується автоматично перед вимірюваннями (`scripts/lab5-environment.sh` → `results/lab5-environment.txt`):
 
 ```
-_вставити вміст results/lab5-environment.txt_
+=== Baseline Environment Specification ===
+Дата вимірювань:        2026-10-29 21:12
+Хост (Docker Engine): 12 логічних CPU, 6.7 ГБ RAM, Docker Desktop, Docker 29.8.0
+
+--- System Under Test ---
+resale-app1:             1.0 CPU, 768 МБ; CACHE_ENABLED=true; RATE_LIMIT_PER_MINUTE=1000000
+resale-app2:             1.0 CPU, 768 МБ; CACHE_ENABLED=true; RATE_LIMIT_PER_MINUTE=1000000
+resale-app3:             1.0 CPU, 768 МБ; CACHE_ENABLED=true; RATE_LIMIT_PER_MINUTE=1000000
+HikariCP (на вузол):     maximum-pool-size = 10, connection-timeout = 5000 мс
+resale-postgres:         без ліміту CPU, без ліміту RAM; max_connections = 100; shared_buffers = 128MB
+                         PostgreSQL16.15onx86_64-pc-linux-musl,co
+resale-redis:            без ліміту CPU, без ліміту RAM; maxmemory-policy = volatile-lru; ключів = 4
+resale-lb (Nginx):       без ліміту CPU, без ліміту RAM; профіль: Round Robin (за замовчуванням): запити по черзі на кожен вузол
+
+--- Load Generator ---
+k6 0.54 (контейнер):     2.0 CPU; мережа public → лише Nginx (http://nginx)
+Ізоляція:                k6 обмежено 2.0 CPU, кожен вузол API — 1 CPU; генератор і SUT працюють на одному хості
 ```
 
 | Параметр | Значення |
@@ -931,46 +972,52 @@ _вставити вміст results/lab5-environment.txt_
 
 ### 10.4. Результати за сценаріями
 
-_Таблиці та графіки заповнюються з `results/lab5-scenario-*.md` і `results/lab5-scenario-*-*.svg` після `scripts/lab5-run-all.sh`._
+Дані — з `results/lab5-scenario-*.md`, прогін 2026-10-29. Throughput рахується в HTTP-запитах за секунду (у сценарії C одна ітерація — 8 запитів).
 
 #### Scenario A — Read-Intensive
 
 | Навантаження (VUs) | Throughput (RPS) | Avg, мс | p50, мс | p95, мс | p99 (Tail), мс | Error Rate, % |
 |---|---|---|---|---|---|---|
-| 10 | | | | | | |
-| 25 | | | | | | |
-| 50 | | | | | | |
-| 100 | | | | | | |
-| 200 | | | | | | |
+| 10 | 154,1 | 64,3 | 72,0 | 173,4 | 204,0 | 0,00 |
+| 25 | 281,7 | 88,3 | 85,5 | 204,9 | 291,2 | 0,00 |
+| 50 | 345,8 | 144,3 | 107,0 | 391,6 | 512,7 | 0,00 |
+| 100 | 340,4 | 293,9 | 197,8 | 900,7 | 1611,2 | 0,00 |
+| 200 | 315,9 | 631,9 | 406,2 | 1994,9 | 3341,1 | 0,00 |
 
 ![Scenario A — throughput](results/lab5-scenario-a-read-throughput.svg)
 ![Scenario A — latency](results/lab5-scenario-a-read-latency.svg)
+
+Cache hit ratio — 99,7 %. RPS зростає до 50 VUs (345,8), далі не зростає й навіть знижується (340,4 → 315,9), а p95 збільшується у 2,2–2,3 раза на кожному наступному ступені.
 
 #### Scenario B — Write-Intensive
 
 | Навантаження (VUs) | Throughput (RPS) | Avg, мс | p50, мс | p95, мс | p99 (Tail), мс | Error Rate, % |
 |---|---|---|---|---|---|---|
-| 10 | | | | | | |
-| 25 | | | | | | |
-| 50 | | | | | | |
-| 100 | | | | | | |
-| 200 | | | | | | |
+| 10 | 273,8 | 36,2 | 19,0 | 85,0 | 99,7 | 0,00 |
+| 25 | 448,2 | 55,5 | 51,2 | 126,5 | 185,7 | 0,00 |
+| 50 | 537,5 | 93,2 | 72,3 | 284,2 | 400,2 | 0,00 |
+| 100 | 613,2 | 163,6 | 82,2 | 597,9 | 893,6 | 0,00 |
+| 200 | 672,4 | 300,9 | 83,0 | 1402,7 | 2035,3 | 0,00 |
 
 ![Scenario B — throughput](results/lab5-scenario-b-write-throughput.svg)
 ![Scenario B — latency](results/lab5-scenario-b-write-latency.svg)
+
+RPS зростає на всіх ступенях, але дедалі повільніше: подвоєння VUs дає +20 % (25 → 50), +14 % (50 → 100) і +10 % (100 → 200). Медіана після 50 VUs майже стала (72–83 мс), а p95/p99 зростають удвічі на кожному ступені — черга формує саме хвіст.
 
 #### Scenario C — Complex Workflow
 
 | Навантаження (VUs) | Throughput (RPS) | Avg, мс | p50, мс | p95, мс | p99 (Tail), мс | Error Rate, % |
 |---|---|---|---|---|---|---|
-| 10 | | | | | | |
-| 25 | | | | | | |
-| 50 | | | | | | |
-| 100 | | | | | | |
-| 200 | | | | | | |
+| 10 | 429,6 | 23,0 | 9,9 | 75,3 | 86,4 | 0,00 |
+| 25 | 653,9 | 38,1 | 14,9 | 106,6 | 181,1 | 0,00 |
+| 50 | 707,2 | 71,0 | 14,3 | 287,8 | 433,3 | 0,00 |
+| 100 | 721,3 | 139,8 | 18,8 | 652,0 | 1011,9 | 0,00 |
+| 200 | 805,6 | 255,1 | 19,6 | 1274,0 | 2042,7 | 0,00 |
 
 ![Scenario C — throughput](results/lab5-scenario-c-workflow-throughput.svg)
 ![Scenario C — latency](results/lab5-scenario-c-workflow-latency.svg)
+
+Усі 13 258 ітерацій завершилися купівлею зі статусом `SOLD`, жодна перевірка не провалилася. Приріст RPS після 25 VUs — лише +8 % (25 → 50) і +2 % (50 → 100). Медіана лишається низькою (14–20 мс), бо більшість запитів ітерації короткі, а p95 зростає з 106,6 до 1274,0 мс.
 
 ### 10.5. Saturation Point та первинний bottleneck
 
@@ -981,7 +1028,32 @@ _Таблиці та графіки заповнюються з `results/lab5-sc
 
 У закритій моделі навантаження (фіксовані VUs без пауз) після насичення зайві VUs лише стоять у черзі. Тому з законом Літтла (`VUs = RPS × середня затримка`) за сталого RPS середня затримка зростає пропорційно кількості VUs.
 
-_Висновок про точку насичення й первинне вузьке місце (DB Connection Pool, CPU PostgreSQL, Lock Contention чи CPU вузлів) формулюється за таблицями 10.4 і знімками `docker stats` (`results/lab5-cache-*-stats.txt`)._
+Допустимою для цієї системи прийнято межу **p95 ≤ 300 мс**.
+
+| Сценарій | Приріст RPS при подвоєнні VUs після насичення | Saturation Point | Stable Throughput (p95 ≤ 300 мс) |
+|---|---|---|---|
+| A — Read | 50 → 100 VUs: −2 % | **50 VUs, ≈ 346 RPS** | 281,7 RPS (25 VUs, p95 = 204,9 мс) |
+| B — Write | 50 → 100 VUs: +14 % | **≈ 50 VUs, ≈ 538 RPS** | 537,5 RPS (50 VUs, p95 = 284,2 мс) |
+| C — Workflow | 25 → 50 VUs: +8 % | **25–50 VUs, ≈ 650–710 RPS** | 707,2 RPS (50 VUs, p95 = 287,8 мс) |
+
+Помилок немає на жодному ступені (Error Rate 0,00 % до 200 VUs). Деградація проявляється лише в затримці: зайві VUs стоять у черзі. Це узгоджується із законом Літтла: для A при 200 VUs `200 / 315,9 RPS ≈ 633 мс` — фактичне середнє 631,9 мс.
+
+**Первинний bottleneck — CPU вузлів API.** Знімки `docker stats` під навантаженням (`results/lab5-cache-*-stats.txt`, 50 VUs):
+
+| Контейнер | Cache Disabled | Cache Enabled |
+|---|---|---|
+| resale-app1 / app2 / app3 (ліміт 1 CPU) | 93 % / 115 % / 113 % | 101 % / 102 % / 102 % |
+| resale-postgres | 25,9 % | 5,2 % |
+| resale-redis | 0,9 % | 21,2 % |
+| resale-lb (Nginx) | 11,9 % | 18,4 % |
+| k6 (ліміт 2 CPU) | 23,7 % | 26,2 % |
+
+Кожен вузол використовує весь свій ліміт в 1 CPU (значення понад 100 % — короткочасні сплески в момент знімка), тоді як PostgreSQL, Redis і Nginx завантажені слабко, а генератор використовує лише ≈ 0,25 з 2 доступних CPU. Інші кандидати відкинуто:
+- **DB Connection Pool** — немає помилок очікування з'єднання (тайм-аут HikariCP 5 с), а PostgreSQL завантажений на ≤ 26 %;
+- **Lock Contention** — у сценарії C кожна ітерація купує власне оголошення, тож `SELECT … FOR UPDATE` не конкурують за ті самі рядки;
+- **CPU PostgreSQL** — навіть без кешу ≈ 0,26 CPU.
+
+**Обмеження вимірювань.** Сценарій A виконувався відразу після перестворення вузлів (холодна JVM). Розігріву 20 с × 10 VUs на 1 CPU недостатньо для JIT-компіляції: при 10 VUs медіана A — 72,0 мс проти 9,9 мс у C на вже розігрітих вузлах, а в тесті масштабування (10.6) та сама конфігурація (3 вузли, 100 VUs, сценарій A) дала 457,9 RPS проти 340,4 RPS тут. Отже, абсолютні значення A занижені приблизно на чверть; для еталонних вимірювань розігрів слід подовжити до 1–2 хв. Тенденції (насичення на ≈ 50 VUs, обмеження CPU вузлів) від цього не змінюються.
 
 ### 10.6. Scaling Impact Analysis (1 vs N instances)
 
@@ -991,11 +1063,17 @@ _Висновок про точку насичення й первинне ву�
 
 | Вузлів (N) | Throughput, RPS | p50, мс | p95, мс | p99, мс | Error Rate, % | RPS(N)/RPS(1) | E(N) |
 |---|---|---|---|---|---|---|---|
-| 1 | | | | | | 1,00× | 1,00 |
-| 2 | | | | | | | |
-| 3 | | | | | | | |
+| 1 | 225,7 | 407,9 | 791,4 | 1003,8 | 0,00 | 1,00× | 1,00 |
+| 2 | 341,0 | 100,7 | 805,4 | 1001,9 | 0,00 | 1,51× | 0,76 |
+| 3 | 457,9 | 120,2 | 695,1 | 900,2 | 0,00 | 2,03× | 0,68 |
 
-_Заповнюється з `results/lab5-scaling.md`._
+Дані — з `results/lab5-scaling.md`, cache hit 98,8–99,8 %.
+
+**Аналіз.**
+- Throughput зростає з кожним вузлом: +115 RPS при переході до 2 вузлів і ще +117 RPS — до 3. Приріст майже сталий у абсолютних числах, тобто кожен новий вузол додає приблизно однакову пропускну здатність. Це підтверджує, що вузьке місце — CPU вузлів API: додавання CPU дає більше RPS.
+- E(N) падає до 0,76 і 0,68: масштабування сублінійне. Причини — спільні для всіх вузлів компоненти (Nginx, Redis, PostgreSQL), які додають однакову частку часу до кожного запиту, а також один хост: усі контейнери ділять його ядра й мережу Docker Desktop.
+- Медіана знижується з 407,9 до 100,7 мс уже при двох вузлах: при одному вузлі 100 VUs чекають у черзі до одного CPU. p95/p99 майже не змінюються (≈ 0,7–1,0 с), бо при 100 VUs система насичена в усіх трьох конфігураціях.
+- Помилок немає в жодній конфігурації.
 
 ### 10.7. Caching Impact Analysis (Cache Disabled vs Warm Cache)
 
@@ -1005,24 +1083,36 @@ _Заповнюється з `results/lab5-scaling.md`._
 
 Навантаження на СУБД вимірюється кількістю транзакцій PostgreSQL за секунду (`pg_stat_database`) і CPU контейнера `resale-postgres`.
 
-| Режим | Throughput, RPS | p50, мс | p95, мс | p99, мс | Cache hit, % | Транзакцій БД/с | CPU PostgreSQL |
-|---|---|---|---|---|---|---|---|
-| Cache Disabled | | | | | | | |
-| Cache Enabled (warm) | | | | | | | |
+| Режим | Throughput, RPS | Avg, мс | p50, мс | p95, мс | p99, мс | Cache hit, % | Транзакцій БД/с | CPU PostgreSQL |
+|---|---|---|---|---|---|---|---|---|
+| Cache Disabled | 147,6 | 341,3 | 91,7 | 1301,9 | 1882,8 | 0,0 | 196 | 25,9 % |
+| Cache Enabled (warm) | 175,0 | 286,6 | 215,3 | 795,8 | 1041,6 | 99,6 | 34 | 5,2 % |
+| **Зміна** | **+18,6 %** | −16,0 % | +135 % | **−38,9 %** | **−44,7 %** | | **−82,7 %** | **у 5 разів менше** |
 
-_Заповнюється з `results/lab5-cache-impact.md`._
+Дані — з `results/lab5-cache-impact.md`, `results/lab5-cache-*-stats.txt`. Error Rate в обох режимах 0,00 %.
+
+**Аналіз.**
+- **Навантаження на СУБД** — головний ефект кешу: транзакцій PostgreSQL за секунду менше на 82,7 % (196 → 34), CPU PostgreSQL — з 25,9 % до 5,2 %. Залишкові транзакції — каталог подій (20 % запитів сценарію) і поодинокі MISS. Навантаження переходить на Redis (CPU 0,9 % → 21,2 %), який обслуговує GET з пам'яті.
+- **Хвіст затримки** скорочується: p95 — на 38,9 %, p99 — на 44,7 %. Без кешу частина запитів чекає на вільне з'єднання пулу HikariCP і на PostgreSQL, і саме ці запити формують хвіст.
+- **Throughput** зростає лише на 18,6 %, бо первинне вузьке місце — CPU вузлів (≈ 100 % в обох режимах), а не БД. Кеш прибирає SQL і відображення сутностей, але десеріалізація JSON з Redis і серіалізація відповіді так само витрачають CPU вузла.
+- **Медіана** з кешем вища (215,3 проти 91,7 мс), хоча середнє нижче. Без кешу розподіл двогорбий: швидкі запити й довгий хвіст тих, що чекали на БД. З кешем запити однорідні й однаково чекають у черзі до насиченого CPU. За законом Літтла середня затримка визначається пропускною здатністю: `50 / 175,0 ≈ 286 мс` і `50 / 147,6 ≈ 339 мс` — збігається з виміряними 286,6 і 341,3 мс.
+- Обидва прогони виконано через ≈ 1 хв після перестворення вузлів (кеш вмикається змінною оточення), тому абсолютні значення занижені холодною JVM так само, як у сценарії A (10.5). Порівняння коректне, бо умови обох режимів однакові.
 
 ### 10.8. System Performance Baseline
 
 ```
 === SYSTEM PERFORMANCE BASELINE ===
-Environment Config:  _з results/lab5-environment.txt_
-Stable Throughput:   _максимальний RPS при p95 у допустимих межах_
-Saturation Point:    _VUs / RPS_
-p95 / p99 Latency:   _значення при стабільному навантаженні_
-Error Rate:          _максимум у точці насичення_
-Critical Scenario:   _найбільш ресурсоємний сценарій_
-Primary Bottleneck:  _виявлений обмежувальний компонент_
+Environment Config:  3 × Spring Boot (1 CPU, 768 MB), HikariCP 10/вузол, PostgreSQL 16, Redis 7
+                     (cache on, TTL 30 s ± 20 %), Nginx Round Robin; k6 0.54 (2 CPU) на тому ж хості
+                     (12 logical CPU, 6.7 GB RAM, Docker Desktop 29.8.0)
+Stable Throughput:   A ≈ 282 RPS (25 VUs) · B ≈ 538 RPS (50 VUs) · C ≈ 707 RPS (50 VUs)
+                     — при p95 ≤ 300 ms
+Saturation Point:    ≈ 50 VUs: A 346 RPS · B 538 RPS · C 707 RPS (C — уже з 25 VUs, 654 RPS)
+p95 / p99 Latency:   при стабільному навантаженні: A 205 / 291 ms · B 284 / 400 ms · C 288 / 433 ms
+Error Rate:          0.00 % на всіх ступенях до 200 VUs (деградація — лише в затримці)
+Critical Scenario:   Scenario A (Read-Intensive): найнижчий throughput і найбільший хвіст
+                     (p99 = 3.3 s при 200 VUs); частково через холодну JVM (див. 10.5)
+Primary Bottleneck:  CPU вузлів API (≈ 100 % ліміту 1 CPU); PostgreSQL ≤ 26 %, Redis ≤ 21 % CPU
 ```
 
 ### 10.9. Теоретичні питання
@@ -1043,28 +1133,87 @@ Primary Bottleneck:  _виявлений обмежувальний компон
 
 ---
 
-## 11. Структура репозиторію
+## 11. ЛР6. Реплікація бази даних та Read/Write Separation
+
+**Повний звіт:** [docs/lab6-replication.md](docs/lab6-replication.md).
+
+- **Топологія:** PostgreSQL Primary + Read Replica (Hot Standby) з асинхронною потоковою реплікацією WAL, слотом реплікації та окремою роллю `replicator` (`docker-compose.yml`, `db/replication/`).
+- **Read/Write Separation** реалізовано в Data Access Layer (пакет `db`):
+  - мутації й критичні читання йдуть на primary;
+  - читання з узгодженістю в кінцевому підсумку — на репліку;
+  - фактичний вузол повертається в заголовку `X-DB-Route`.
+- **Read-After-Write Consistency:** Session Sticky Routing (мітка автора змін у Redis), Explicit Primary Routing для критичних даних, наповнення кешу лише з primary.
+- **Відмови вузлів СУБД:**
+  - втрата репліки — Primary Fallback без помилок для клієнта;
+  - втрата primary — режим лише читання: запис отримує 503, каталог доступний з репліки.
+- **Read Scaling Impact:** порівняння Single Primary і Primary + Replica під навантаженням ЛР5.
+
+```bash
+bash scripts/lab6-run-all.sh
+```
+
+---
+
+## 12. ЛР7. Масштабування даних: шардинг
+
+**Повний звіт:** [docs/lab7-sharding.md](docs/lab7-sharding.md).
+
+- **Набір даних і ключ:** журнал операцій користувачів `ledger_entries` на двох незалежних шардах PostgreSQL; ключ шардингу — `user_id`.
+- **Shard Router** (пакет `sharding`) — детермінована маршрутизація трьома функціями: `key % N`, `murmur3(key) % N`, Consistent Hashing з віртуальними вузлами.
+- **Розподіл даних і Hot Shard:** матриця розподілу для трьох профілів ключів; перевантаження одного шарду за `key % N` і його усунення хешуванням.
+- **Cross-Shard операції:** запит до всіх шардів (Scatter-Gather) порівняно із запитом до одного шарду; запис BUY/SELL на два шарди виконується як Saga з ідемпотентними кроками.
+- **Решардинг:** модель переносу даних — ≈ N/(N+1) ключів для `key % N` проти ≈ 1/(N+1) для Consistent Hashing.
+- **Benchmark:** Single Node проти Sharded Cluster.
+
+```bash
+bash scripts/lab7-run-all.sh
+```
+
+---
+
+## 13. ЛР8. Інженерія стійкості: Cache Stampede, Thundering Herd, Cache Avalanche, Cache Penetration
+
+**Повний звіт:** [docs/lab8-resilience.md](docs/lab8-resilience.md), зокрема Failure Modes Analysis і Resilience Profile системи.
+
+- **Ресурсоємний об'єкт:** агрегована статистика події `GET /api/events/{id}/stats`.
+- **Cache Stampede:** 500 одночасних запитів до холодного ключа — без захисту і з Single-Flight + Distributed Lock (Redis `SET NX PX`, зняття блокування Lua-скриптом за токеном).
+- **Cache Avalanche:** синхронне закінчення TTL групи ключів і TTL Jittering (± 20 %).
+- **Cache Penetration:** запити до неіснуючих подій і Negative Caching.
+- **Порівняльна матриця** Unprotected проти Protected.
+
+```bash
+bash scripts/lab8-run-all.sh
+```
+
+---
+
+## 14. Структура репозиторію
 
 ```
 concert-ticket-system/
-├── docker-compose.yml          # nginx + app1..app3 + postgres + redis (+ k6 у профілі loadtest)
+├── docker-compose.yml          # nginx + app1..app3 + postgres (primary) + postgres-replica + shard-a/b + redis (+ k6)
 ├── Dockerfile                  # multi-stage: Maven build → JRE runtime (+ curl для healthcheck)
 ├── pom.xml
+├── db/replication/             # ЛР6: pg_hba.conf, запуск репліки (pg_basebackup, слот реплікації)
+├── docs/                       # звіти ЛР6–ЛР8
 ├── nginx/
 │   ├── nginx.conf              # reverse proxy, таймаути, повтори, формат журналу
 │   └── upstreams/              # профілі пулу: round-robin, least-conn, weighted, ip-hash, scale-1/2
 │       └── active.conf         # активний профіль (змінюється scripts/lb-switch.sh)
-├── load-tests/                 # сценарії k6: load.js (ЛР3), scenario-a/b/c (ЛР5)
+├── load-tests/                 # сценарії k6: load.js (ЛР3), scenario-a/b/c (ЛР5), lab7-*, lab8-*
 │   └── lib/                    # профіль навантаження, звіти, SVG-графіки
-├── scripts/                    # демонстраційні скрипти ЛР2–ЛР5
+├── scripts/                    # демонстраційні скрипти ЛР2–ЛР8
 ├── results/                    # результати прогонів (створюється скриптами)
 └── src/main/
     ├── java/com/ticketresale/
     │   ├── common/             # бізнес-правила, винятки, глобальний обробник помилок
-    │   ├── cache/              # розподілений кеш Cache-Aside у Redis (ЛР4)
-    │   ├── infra/              # X-Instance-ID, /health, синтетична затримка, клієнт Redis (ЛР2–4)
+    │   ├── cache/              # кеш оголошень (ЛР4), захищений кеш статистики (ЛР8)
+    │   ├── db/                 # ЛР6: маршрутизація primary/replica, Read-Your-Writes, стан вузлів
+    │   ├── sharding/           # ЛР7: Shard Router, функції маршрутизації, модель решардингу
+    │   ├── ledger/             # ЛР7: журнал операцій користувачів на шардах
+    │   ├── infra/              # X-Instance-ID, /health, синтетична затримка, клієнт Redis (ЛР2–6)
     │   ├── user/               # користувачі
-    │   ├── event/              # події
+    │   ├── event/              # події, статистика події (ЛР8)
     │   ├── ticket/             # квитки (первинний випуск, власність)
     │   ├── listing/            # оголошення перепродажу
     │   ├── hold/               # бронювання оголошень у Redis (ЛР2)
@@ -1072,12 +1221,13 @@ concert-ticket-system/
     │   └── purchase/           # купівля (піковий сценарій)
     └── resources/
         ├── application.yml
-        └── db/migration/       # V1__init_schema.sql, V2__seed_data.sql
+        ├── db/migration/       # V1__init_schema.sql, V2__seed_data.sql (primary)
+        └── db/shard/           # V1__ledger_entries.sql (кожен шард, ЛР7)
 ```
 
 ---
 
-## 12. Розподіл відповідальності (RACI)
+## 15. Розподіл відповідальності (RACI)
 
 R — виконує, A — відповідає за результат, C — консультує, I — інформується.
 
@@ -1121,3 +1271,21 @@ R — виконує, A — відповідає за результат, C — 
 | Caching Impact (Cache Disabled проти Warm Cache, навантаження на БД) | C | A/R | I |
 | Saturation Point, первинний bottleneck, картка Performance Baseline | A/R | C | C |
 | README, специфікація API | A/R | C | C |
+| **ЛР6** | | | |
+| Топологія реплікації: primary, репліка, слот, pg_hba, compose | I | C | A/R |
+| Маршрутизація primary/replica, Primary Fallback, режим лише читання, `/health` | C | A/R | C |
+| Session Sticky Routing, Explicit Primary Routing, наповнення кешу з primary | C | A/R | I |
+| Класифікація читань (Eventual / Strong), демонстрація Stale Read | A/R | C | C |
+| Сценарії відмов, Read Scaling Impact | C | C | A/R |
+| **ЛР7** | | | |
+| Вибір набору даних і Shard Key, схема шарду, модуль `ledger`, Scatter-Gather | A/R | C | C |
+| Shard Router, функції маршрутизації, Consistent Hashing, модель решардингу | C | I | A/R |
+| Cross-Shard Write (кроки Saga при купівлі) | C | I | A/R |
+| Матриця розподілу, демонстрація маршрутизації | A/R | I | C |
+| Hot Shard, Single Node проти Sharded Cluster | C | I | A/R |
+| **ЛР8** | | | |
+| Вибір ресурсоємного об'єкта, статистика події, сценарій Stampede, матриця | A/R | C | I |
+| Single-Flight, Distributed Lock, TTL Jitter, Negative Caching, Failure Modes | C | A/R | I |
+| Сценарії Avalanche і Penetration | C | A/R | I |
+| Конфігурація режимів (змінні оточення compose) | I | C | A/R |
+| Resilience Profile | A/R | C | C |

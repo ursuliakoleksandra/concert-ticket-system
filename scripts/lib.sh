@@ -14,6 +14,8 @@ LB_URL="${LB_URL:-http://localhost:8080}"
 LAST_STATUS=""
 LAST_INSTANCE=""
 LAST_CACHE=""
+LAST_ROUTE=""
+LAST_SHARD=""
 LAST_BODY=""
 
 # Розбір сирої HTTP-відповіді (curl -i) у LAST_STATUS / LAST_INSTANCE / LAST_BODY
@@ -22,13 +24,16 @@ _parse_response() {
     LAST_STATUS=$(printf '%s\n' "$raw" | awk 'NR == 1 { print $2 }') || true
     LAST_INSTANCE=$(printf '%s\n' "$raw" | awk 'tolower($1) == "x-instance-id:" { print $2; exit }' | tr -d '\r') || true
     LAST_CACHE=$(printf '%s\n' "$raw" | awk 'tolower($1) == "x-cache:" { print $2; exit }' | tr -d '\r') || true
+    LAST_ROUTE=$(printf '%s\n' "$raw" | awk 'tolower($1) == "x-db-route:" { print $2; exit }' | tr -d '\r') || true
+    LAST_SHARD=$(printf '%s\n' "$raw" | awk 'tolower($1) == "x-shard:" { print $2; exit }' | tr -d '\r') || true
     LAST_BODY=$(printf '%s\n' "$raw" | awk 'body { print } /^\r?$/ { body = 1 }') || true
 }
 
 _print_last() {
     local label="$1"
-    printf '%-34s → HTTP %s  [X-Instance-ID: %s]%s\n' "$label" "$LAST_STATUS" "${LAST_INSTANCE:--}" \
-        "${LAST_CACHE:+  [X-Cache: $LAST_CACHE]}"
+    printf '%-34s → HTTP %s  [X-Instance-ID: %s]%s%s%s\n' "$label" "$LAST_STATUS" "${LAST_INSTANCE:--}" \
+        "${LAST_CACHE:+  [X-Cache: $LAST_CACHE]}" "${LAST_ROUTE:+  [X-DB-Route: $LAST_ROUTE]}" \
+        "${LAST_SHARD:+  [X-Shard: $LAST_SHARD]}"
     if [[ -n "$LAST_BODY" ]]; then
         printf '      %s\n' "$LAST_BODY"
     fi
@@ -182,4 +187,129 @@ db_transactions() {
 # Знімок CPU/пам'яті контейнерів (для звітів ЛР5)
 stats_snapshot() {
     docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}'
+}
+
+# ---------------------------------------------------------------------------------------------
+# ЛР6–ЛР8
+
+# Значення простого поля JSON з тіла останньої відповіді: json_field title → "Нова назва"
+json_field() {
+    printf '%s' "$LAST_BODY" | grep -o "\"$1\":\(\"[^\"]*\"\|[^,}]*\)" | head -n 1 | cut -d: -f2- | tr -d '"' || true
+}
+
+expect_route() {
+    local expected="$1"
+    if [[ "$LAST_ROUTE" != "$expected" ]]; then
+        printf '  ✗ Очікувався маршрут X-DB-Route: %s, отримано: %s\n' "$expected" "${LAST_ROUTE:-—}" >&2
+        exit 1
+    fi
+    printf '  ✓ X-DB-Route: %s\n' "$expected"
+}
+
+expect_shard() {
+    local expected="$1"
+    if [[ "$LAST_SHARD" != "$expected" ]]; then
+        printf '  ✗ Очікувався шард %s, отримано: %s\n' "$expected" "${LAST_SHARD:-—}" >&2
+        exit 1
+    fi
+    printf '  ✓ X-Shard: %s\n' "$expected"
+}
+
+# SQL на конкретному вузлі СУБД: psql_on postgres-replica ticket_resale "select ..."
+psql_on() {
+    local service="$1" db="$2" sql="$3"
+    docker compose exec -T "$service" psql -U resale -d "$db" -tAc "$sql" | tr -d '\r'
+}
+
+# Транзакцій з моменту старту на вузлі (commit + rollback): db_transactions_on postgres-replica
+db_transactions_on() {
+    local service="$1" db="${2:-ticket_resale}"
+    psql_on "$service" "$db" "select xact_commit + xact_rollback from pg_stat_database where datname = '$db'" | tr -d ' '
+}
+
+# Очікування healthcheck будь-якого контейнера compose (СУБД, Redis) — до 120 с
+wait_container_healthy() {
+    local service="$1" state=""
+    printf 'Очікування готовності %s' "$service"
+    for _ in $(seq 1 60); do
+        state=$(docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q "$service")" 2>/dev/null || true)
+        if [[ "$state" == "healthy" ]]; then
+            printf ' — готовий\n'
+            return 0
+        fi
+        printf '.'
+        sleep 2
+    done
+    printf '\n%s не став healthy за 120 с\n' "$service" >&2
+    exit 1
+}
+
+# Після перезапуску репліки вузли API ще ~10 с вважають її недоступною (resale.db.retry-after) —
+# чекаємо, поки читання знову підуть на репліку
+wait_replica_route() {
+    printf 'Очікування повернення читань на репліку'
+    for _ in $(seq 1 30); do
+        local route
+        route=$(curl -s -o /dev/null -D - "$LB_URL/api/events?page=0&size=1" \
+            | awk 'tolower($1) == "x-db-route:" { print $2; exit }' | tr -d '\r') || true
+        if [[ "$route" == "replica" ]]; then
+            printf ' — так\n'
+            return 0
+        fi
+        printf '.'
+        sleep 2
+    done
+    printf '\nЧитання не повернулися на репліку за 60 с\n' >&2
+    exit 1
+}
+
+# Перезапуск репліки з іншою штучною затримкою застосування WAL: replica_with_delay 5s | 0
+replica_with_delay() {
+    step "Репліка з recovery_min_apply_delay = $1"
+    REPLICA_APPLY_DELAY="$1" docker compose up -d --no-deps postgres-replica
+    wait_container_healthy postgres-replica
+    wait_replica_route
+}
+
+# Короткий запит до API через балансувальник без друку: api GET /api/admin/replication
+api() {
+    local method="$1" path="$2"
+    curl -s -X "$method" "$LB_URL$path"
+}
+
+# SVG-діаграма зі згрупованими стовпчиками (без зовнішніх залежностей — awk).
+#   bar_chart_svg OUT.svg "Заголовок" "Підпис осі Y" "Серія 1" "Серія 2" < рядки "категорія|значення1|значення2"
+bar_chart_svg() {
+    local out="$1" title="$2" ylabel="$3" s1="$4" s2="$5"
+    awk -F'|' -v title="$title" -v ylabel="$ylabel" -v s1="$s1" -v s2="$s2" '
+        { cat[NR] = $1; a[NR] = $2 + 0; b[NR] = $3 + 0; if ($2 > max) max = $2; if ($3 > max) max = $3 }
+        END {
+            n = NR; if (max <= 0) max = 1
+            step = 10 ^ int(log(max) / log(10)); top = step
+            while (top < max) top += step
+            W = 720; H = 400; L = 70; R = 20; T = 60; B = 60
+            pw = W - L - R; ph = H - T - B; gw = pw / n; bw = gw * 0.32
+            printf "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%d\" height=\"%d\" font-family=\"Arial, sans-serif\" font-size=\"12\">\n", W, H
+            printf "<rect width=\"100%%\" height=\"100%%\" fill=\"#ffffff\"/>\n"
+            printf "<text x=\"%d\" y=\"24\" font-size=\"16\" font-weight=\"bold\">%s</text>\n", L, title
+            for (i = 0; i <= 4; i++) {
+                y = T + ph - ph * i / 4; v = top * i / 4
+                printf "<line x1=\"%d\" y1=\"%.1f\" x2=\"%d\" y2=\"%.1f\" stroke=\"#e5e5e5\"/>\n", L, y, L + pw, y
+                printf "<text x=\"%d\" y=\"%.1f\" text-anchor=\"end\">%g</text>\n", L - 6, y + 4, v
+            }
+            printf "<text transform=\"translate(16,%d) rotate(-90)\" text-anchor=\"middle\">%s</text>\n", T + ph / 2, ylabel
+            for (i = 1; i <= n; i++) {
+                x0 = L + gw * (i - 1) + gw * 0.16
+                ha = ph * a[i] / top; hb = ph * b[i] / top
+                printf "<rect x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"#2a78d6\"/>\n", x0, T + ph - ha, bw, ha
+                printf "<rect x=\"%.1f\" y=\"%.1f\" width=\"%.1f\" height=\"%.1f\" fill=\"#eb6834\"/>\n", x0 + bw + 4, T + ph - hb, bw, hb
+                printf "<text x=\"%.1f\" y=\"%.1f\" text-anchor=\"middle\" font-size=\"11\">%g</text>\n", x0 + bw / 2, T + ph - ha - 4, a[i]
+                printf "<text x=\"%.1f\" y=\"%.1f\" text-anchor=\"middle\" font-size=\"11\">%g</text>\n", x0 + bw * 1.5 + 4, T + ph - hb - 4, b[i]
+                printf "<text x=\"%.1f\" y=\"%d\" text-anchor=\"middle\">%s</text>\n", L + gw * (i - 0.5), T + ph + 18, cat[i]
+            }
+            printf "<line x1=\"%d\" y1=\"%d\" x2=\"%d\" y2=\"%d\" stroke=\"#333\"/>\n", L, T + ph, L + pw, T + ph
+            printf "<rect x=\"%d\" y=\"36\" width=\"12\" height=\"12\" fill=\"#2a78d6\"/><text x=\"%d\" y=\"46\">%s</text>\n", L, L + 16, s1
+            printf "<rect x=\"%d\" y=\"36\" width=\"12\" height=\"12\" fill=\"#eb6834\"/><text x=\"%d\" y=\"46\">%s</text>\n", L + 220, L + 236, s2
+            print "</svg>"
+        }' > "$out"
 }

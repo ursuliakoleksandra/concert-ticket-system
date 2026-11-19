@@ -1,0 +1,250 @@
+
+=== Перестворення app1..app3: CACHE_ENABLED=true RATE_LIMIT_PER_MINUTE=1000000 ===
+ Container resale-app3 Recreate 
+ Container resale-app1 Recreate 
+ Container resale-app2 Recreate 
+ Container resale-app2 Recreated 
+ Container resale-app3 Recreated 
+ Container resale-app1 Recreated 
+ Container resale-app3 Starting 
+ Container resale-app1 Starting 
+ Container resale-app2 Starting 
+ Container resale-app3 Started 
+ Container resale-app1 Started 
+ Container resale-app2 Started 
+Очікування готовності app1.................... — готовий
+Очікування готовності app2 — готовий
+Очікування готовності app3 — готовий
+2026/10/29 19:12:10 [notice] 34#34: signal process started
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+2026/10/29 19:12:15 [notice] 60#60: signal process started
+=== Baseline Environment Specification ===
+Дата вимірювань:        2026-10-29 21:12
+Хост (Docker Engine): 12 логічних CPU, 6.7 ГБ RAM, Docker Desktop, Docker 29.8.0
+
+--- System Under Test ---
+resale-app1:             1.0 CPU, 768 МБ; CACHE_ENABLED=true; RATE_LIMIT_PER_MINUTE=1000000
+resale-app2:             1.0 CPU, 768 МБ; CACHE_ENABLED=true; RATE_LIMIT_PER_MINUTE=1000000
+resale-app3:             1.0 CPU, 768 МБ; CACHE_ENABLED=true; RATE_LIMIT_PER_MINUTE=1000000
+HikariCP (на вузол):     maximum-pool-size = 10, connection-timeout = 5000 мс
+resale-postgres:         без ліміту CPU, без ліміту RAM; max_connections = 100; shared_buffers = 128MB
+                         PostgreSQL16.15onx86_64-pc-linux-musl,co
+resale-redis:            без ліміту CPU, без ліміту RAM; maxmemory-policy = volatile-lru; ключів = 4
+resale-lb (Nginx):       без ліміту CPU, без ліміту RAM; профіль: Round Robin (за замовчуванням): запити по черзі на кожен вузол
+
+--- Load Generator ---
+k6 0.54 (контейнер):     2.0 CPU; мережа public → лише Nginx (http://nginx)
+Ізоляція:                k6 обмежено 2.0 CPU, кожен вузол API — 1 CPU; генератор і SUT працюють на одному хості
+
+=== Scenario A — Read-Intensive ===
+ Container concert-ticket-system-k6-run-5071c8ee557a Creating 
+ Container concert-ticket-system-k6-run-5071c8ee557a Created 
+### Scenario A — Read-Intensive
+
+Умови: 3 instances, round-robin, cache enabled.
+Ступінь: 30s з постійною кількістю VUs; розігрів: 20s × 10 VUs.
+
+| Навантаження (VUs) | Запитів | Throughput (RPS) | Avg, мс | p50, мс | p95, мс | p99 (Tail), мс | Max, мс | Error Rate, % |
+|---|---|---|---|---|---|---|---|---|
+| 10 | 4622 | 154.1 | 64.3 | 72.0 | 173.4 | 204.0 | 296.3 | 0.00 |
+| 25 | 8450 | 281.7 | 88.3 | 85.5 | 204.9 | 291.2 | 816.1 | 0.00 |
+| 50 | 10375 | 345.8 | 144.3 | 107.0 | 391.6 | 512.7 | 1004.1 | 0.00 |
+| 100 | 10213 | 340.4 | 293.9 | 197.8 | 900.7 | 1611.2 | 2719.7 | 0.00 |
+| 200 | 9476 | 315.9 | 631.9 | 406.2 | 1994.9 | 3341.1 | 6313.0 | 0.00 |
+
+Cache hit ratio (X-Cache: HIT серед кешованих запитів): 99.7 %
+
+=== Перестворення app1..app3: CACHE_ENABLED=false RATE_LIMIT_PER_MINUTE=1000000 ===
+ Container resale-app2 Recreate 
+ Container resale-app3 Recreate 
+ Container resale-app1 Recreate 
+ Container resale-app2 Recreated 
+ Container resale-app1 Recreated 
+ Container resale-app3 Recreated 
+ Container resale-app2 Starting 
+ Container resale-app3 Starting 
+ Container resale-app1 Starting 
+ Container resale-app2 Started 
+ Container resale-app3 Started 
+ Container resale-app1 Started 
+Очікування готовності app1................. — готовий
+Очікування готовності app2 — готовий
+Очікування готовності app3 — готовий
+2026/10/29 19:17:22 [notice] 34#34: signal process started
+
+=== Cache disabled: Scenario A, 50 VUs × 30s (розігрів 15 с прогріває кеш) ===
+ Container concert-ticket-system-k6-run-c25edfafbcad Creating 
+ Container concert-ticket-system-k6-run-c25edfafbcad Created 
+### Scenario A — Read-Intensive
+
+Умови: cache disabled, 3 instances, 50 VUs.
+Ступінь: 30s з постійною кількістю VUs; розігрів: 15s × 20 VUs.
+
+| Навантаження (VUs) | Запитів | Throughput (RPS) | Avg, мс | p50, мс | p95, мс | p99 (Tail), мс | Max, мс | Error Rate, % |
+|---|---|---|---|---|---|---|---|---|
+| 50 | 4428 | 147.6 | 341.3 | 91.7 | 1301.9 | 1882.8 | 3229.8 | 0.00 |
+
+Cache hit ratio (X-Cache: HIT серед кешованих запитів): 0.0 %
+
+=== Перестворення app1..app3: CACHE_ENABLED=true RATE_LIMIT_PER_MINUTE=1000000 ===
+ Container resale-app1 Recreate 
+ Container resale-app2 Recreate 
+ Container resale-app3 Recreate 
+ Container resale-app3 Recreated 
+ Container resale-app2 Recreated 
+ Container resale-app1 Recreated 
+ Container resale-app3 Starting 
+ Container resale-app1 Starting 
+ Container resale-app2 Starting 
+ Container resale-app3 Started 
+ Container resale-app1 Started 
+ Container resale-app2 Started 
+Очікування готовності app1................ — готовий
+Очікування готовності app2 — готовий
+Очікування готовності app3 — готовий
+2026/10/29 19:19:31 [notice] 53#53: signal process started
+
+=== Cache enabled: Scenario A, 50 VUs × 30s (розігрів 15 с прогріває кеш) ===
+ Container concert-ticket-system-k6-run-5ae7a4faa8df Creating 
+ Container concert-ticket-system-k6-run-5ae7a4faa8df Created 
+### Scenario A — Read-Intensive
+
+Умови: cache enabled, 3 instances, 50 VUs.
+Ступінь: 30s з постійною кількістю VUs; розігрів: 15s × 20 VUs.
+
+| Навантаження (VUs) | Запитів | Throughput (RPS) | Avg, мс | p50, мс | p95, мс | p99 (Tail), мс | Max, мс | Error Rate, % |
+|---|---|---|---|---|---|---|---|---|
+| 50 | 5251 | 175.0 | 286.6 | 215.3 | 795.8 | 1041.6 | 1614.7 | 0.00 |
+
+Cache hit ratio (X-Cache: HIT серед кешованих запитів): 99.6 %
+| Режим | Throughput, RPS | Avg, мс | p50, мс | p95, мс | p99, мс | Error Rate, % | Cache hit, % | Транзакцій БД/с | CPU PostgreSQL |
+|---|---|---|---|---|---|---|---|---|---|
+| Cache Disabled | 147.6 | 341.3 | 91.7 | 1301.9 | 1882.8 | 0.00 | (X-Cache: | 196 | 25.87% |
+| Cache Enabled (warm) | 175.0 | 286.6 | 215.3 | 795.8 | 1041.6 | 0.00 | (X-Cache: | 34 | 5.16% |
+
+Навантаження: Scenario A, 50 VUs × 30s, 3 вузли, Round Robin. Транзакції БД — за весь прогін з розігрівом.
+
+=== Перестворення app1..app3: CACHE_ENABLED=true RATE_LIMIT_PER_MINUTE=1000000 ===
+ Container resale-app1 Running 
+ Container resale-app2 Running 
+ Container resale-app3 Running 
+Очікування готовності app1 — готовий
+Очікування готовності app2 — готовий
+Очікування готовності app3 — готовий
+2026/10/29 19:20:35 [notice] 71#71: signal process started
+
+=== Scaling: 1 вузл(и), 100 VUs × 30s (scenario-a-read.js) ===
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+2026/10/29 19:20:39 [notice] 95#95: signal process started
+ Container concert-ticket-system-k6-run-a4df313e5194 Creating 
+ Container concert-ticket-system-k6-run-a4df313e5194 Created 
+### Scenario A — Read-Intensive
+
+Умови: 1 instance(s), 100 VUs.
+Ступінь: 30s з постійною кількістю VUs; розігрів: 15s × 20 VUs.
+
+| Навантаження (VUs) | Запитів | Throughput (RPS) | Avg, мс | p50, мс | p95, мс | p99 (Tail), мс | Max, мс | Error Rate, % |
+|---|---|---|---|---|---|---|---|---|
+| 100 | 6771 | 225.7 | 443.9 | 407.9 | 791.4 | 1003.8 | 1690.9 | 0.00 |
+
+Cache hit ratio (X-Cache: HIT серед кешованих запитів): 98.8 %
+
+=== Scaling: 2 вузл(и), 100 VUs × 30s (scenario-a-read.js) ===
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+2026/10/29 19:21:38 [notice] 120#120: signal process started
+ Container concert-ticket-system-k6-run-e03a090e0f11 Creating 
+ Container concert-ticket-system-k6-run-e03a090e0f11 Created 
+### Scenario A — Read-Intensive
+
+Умови: 2 instance(s), 100 VUs.
+Ступінь: 30s з постійною кількістю VUs; розігрів: 15s × 20 VUs.
+
+| Навантаження (VUs) | Запитів | Throughput (RPS) | Avg, мс | p50, мс | p95, мс | p99 (Tail), мс | Max, мс | Error Rate, % |
+|---|---|---|---|---|---|---|---|---|
+| 100 | 10231 | 341.0 | 293.9 | 100.7 | 805.4 | 1001.9 | 1684.7 | 0.00 |
+
+Cache hit ratio (X-Cache: HIT серед кешованих запитів): 99.8 %
+
+=== Scaling: 3 вузл(и), 100 VUs × 30s (scenario-a-read.js) ===
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+2026/10/29 19:22:38 [notice] 144#144: signal process started
+ Container concert-ticket-system-k6-run-1771c0bb8793 Creating 
+ Container concert-ticket-system-k6-run-1771c0bb8793 Created 
+### Scenario A — Read-Intensive
+
+Умови: 3 instance(s), 100 VUs.
+Ступінь: 30s з постійною кількістю VUs; розігрів: 15s × 20 VUs.
+
+| Навантаження (VUs) | Запитів | Throughput (RPS) | Avg, мс | p50, мс | p95, мс | p99 (Tail), мс | Max, мс | Error Rate, % |
+|---|---|---|---|---|---|---|---|---|
+| 100 | 13738 | 457.9 | 218.5 | 120.2 | 695.1 | 900.2 | 1687.8 | 0.00 |
+
+Cache hit ratio (X-Cache: HIT серед кешованих запитів): 99.8 %
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+2026/10/29 19:23:35 [notice] 168#168: signal process started
+| Вузлів (N) | Throughput, RPS | p50, мс | p95, мс | p99, мс | Error Rate, % | Приріст RPS(N)/RPS(1) | Efficiency E(N) = RPS(N) / (N × RPS(1)) |
+|---|---|---|---|---|---|---|---|
+| 1 | 225.7 | 407.9 | 791.4 | 1003.8 | 0.00 | 1.00× | 1.00 |
+| 2 | 341.0 | 100.7 | 805.4 | 1001.9 | 0.00 | 1.51× | 0.76 |
+| 3 | 457.9 | 120.2 | 695.1 | 900.2 | 0.00 | 2.03× | 0.68 |
+
+Навантаження: scenario-a-read.js, 100 VUs × 30s на кожну конфігурацію, Round Robin.
+
+=== Scenario B — Write-Intensive ===
+ Container concert-ticket-system-k6-run-a2cae8727c1d Creating 
+ Container concert-ticket-system-k6-run-a2cae8727c1d Created 
+### Scenario B — Write-Intensive
+
+Умови: 3 instances, round-robin, cache enabled.
+Ступінь: 30s з постійною кількістю VUs; розігрів: 20s × 10 VUs.
+
+| Навантаження (VUs) | Запитів | Throughput (RPS) | Avg, мс | p50, мс | p95, мс | p99 (Tail), мс | Max, мс | Error Rate, % |
+|---|---|---|---|---|---|---|---|---|
+| 10 | 8214 | 273.8 | 36.2 | 19.0 | 85.0 | 99.7 | 559.4 | 0.00 |
+| 25 | 13446 | 448.2 | 55.5 | 51.2 | 126.5 | 185.7 | 295.9 | 0.00 |
+| 50 | 16124 | 537.5 | 93.2 | 72.3 | 284.2 | 400.2 | 1064.5 | 0.00 |
+| 100 | 18396 | 613.2 | 163.6 | 82.2 | 597.9 | 893.6 | 2223.5 | 0.00 |
+| 200 | 20173 | 672.4 | 300.9 | 83.0 | 1402.7 | 2035.3 | 5408.4 | 0.00 |
+
+=== Scenario C — Complex Workflow ===
+ Container concert-ticket-system-k6-run-00ee45fcc2cd Creating 
+ Container concert-ticket-system-k6-run-00ee45fcc2cd Created 
+### Scenario C — Complex Workflow
+
+Умови: 3 instances, round-robin, cache enabled.
+Ступінь: 30s з постійною кількістю VUs; розігрів: 20s × 10 VUs.
+
+| Навантаження (VUs) | Запитів | Throughput (RPS) | Avg, мс | p50, мс | p95, мс | p99 (Tail), мс | Max, мс | Error Rate, % |
+|---|---|---|---|---|---|---|---|---|
+| 10 | 12888 | 429.6 | 23.0 | 9.9 | 75.3 | 86.4 | 166.7 | 0.00 |
+| 25 | 19616 | 653.9 | 38.1 | 14.9 | 106.6 | 181.1 | 283.2 | 0.00 |
+| 50 | 21216 | 707.2 | 71.0 | 14.3 | 287.8 | 433.3 | 878.1 | 0.00 |
+| 100 | 21640 | 721.3 | 139.8 | 18.8 | 652.0 | 1011.9 | 2533.9 | 0.00 |
+| 200 | 24168 | 805.6 | 255.1 | 19.6 | 1274.0 | 2042.7 | 5079.9 | 0.00 |
+
+=== Повернення налаштувань за замовчуванням (rate limit 20/хв) ===
+
+=== Перестворення app1..app3: CACHE_ENABLED=true RATE_LIMIT_PER_MINUTE=20 ===
+ Container resale-app1 Recreate 
+ Container resale-app3 Recreate 
+ Container resale-app2 Recreate 
+ Container resale-app2 Recreated 
+ Container resale-app1 Recreated 
+ Container resale-app3 Recreated 
+ Container resale-app3 Starting 
+ Container resale-app1 Starting 
+ Container resale-app2 Starting 
+ Container resale-app3 Started 
+ Container resale-app1 Started 
+ Container resale-app2 Started 
+Очікування готовності app1............. — готовий
+Очікування готовності app2 — готовий
+Очікування готовності app3 — готовий
+2026/10/29 19:31:09 [notice] 186#186: signal process started
+
+Готово. Результати ЛР5 — у results/lab5-*

@@ -28,4 +28,14 @@ public final class EventDtos {
             return new EventResponse(e.getId(), e.getTitle(), e.getVenue(), e.getStartsAt(), e.getFaceValue());
         }
     }
+
+    /**
+     * Агрегована статистика події (ЛР8).
+     *
+     * @param computedAt момент обчислення в СУБД — показує вік закешованого значення
+     */
+    public record EventStats(Long eventId, String title, long activeListings, BigDecimal minPrice,
+                             BigDecimal avgPrice, BigDecimal maxPrice, long soldTickets, BigDecimal revenue,
+                             Instant computedAt) {
+    }
 }

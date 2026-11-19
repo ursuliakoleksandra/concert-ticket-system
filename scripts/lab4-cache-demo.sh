@@ -23,7 +23,7 @@ lb GET "$path"; expect_status 200; expect_cache HIT
 step "2. Затримка: $SAMPLES холодних (MISS) і $SAMPLES гарячих (HIT) запитів через Nginx"
 # Вимір часу відповіді: curl -w %{time_total}; X-Cache перевіряється для кожного запиту
 measure() {   # measure PATH → друкує "<час_с> <X-Cache>"
-    curl -s -o /dev/null -D - -w 'TIME=%{time_total}\n' "$LB_URL$1" \
+    curl -s --max-time 5 -o /dev/null -D - -w 'TIME=%{time_total}\n' "$LB_URL$1" \
         | awk 'tolower($1) == "x-cache:" { c = $2 } /^TIME=/ { sub("TIME=", ""); t = $0 }
                END { gsub("\r", "", c); print t, c }'
 }
@@ -114,13 +114,14 @@ lb POST "/api/listings/$fb_listing/purchase" "" 2; expect_status 201
 printf '\n-- Бронювання без Redis недоступне (очікувано 503) --\n'
 lb POST "/api/listings/$fb_listing2/hold" "" 2; expect_status 503
 
-printf '\nЗапуск Redis і очікування перепідключення вузлів'
+printf '\nЗапуск Redis і очікування перепідключення вузлів\n'
 docker compose start redis >/dev/null
 recovered=""
 for _ in $(seq 1 45); do
-    status=$(measure "$fb_path" | awk '{ print $2 }')
+    # || true: збій одного запиту (вузол ще перепідключається) не повинен завершувати скрипт через set -e
+    status=$(measure "$fb_path" | awk '{ print $2 }') || true
     if [[ "$status" == "MISS" || "$status" == "HIT" ]]; then recovered="yes"; break; fi
-    printf '.'; sleep 2
+    printf ' %s' "${status:-немає відповіді}"; sleep 2
 done
 printf '\n'
 [[ -n "$recovered" ]] || { printf '  ✗ Кеш не відновився за 90 с\n' >&2; exit 1; }

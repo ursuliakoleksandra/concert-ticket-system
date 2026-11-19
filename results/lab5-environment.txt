@@ -1,0 +1,17 @@
+=== Baseline Environment Specification ===
+Дата вимірювань:        2026-10-29 21:12
+Хост (Docker Engine): 12 логічних CPU, 6.7 ГБ RAM, Docker Desktop, Docker 29.8.0
+
+--- System Under Test ---
+resale-app1:             1.0 CPU, 768 МБ; CACHE_ENABLED=true; RATE_LIMIT_PER_MINUTE=1000000
+resale-app2:             1.0 CPU, 768 МБ; CACHE_ENABLED=true; RATE_LIMIT_PER_MINUTE=1000000
+resale-app3:             1.0 CPU, 768 МБ; CACHE_ENABLED=true; RATE_LIMIT_PER_MINUTE=1000000
+HikariCP (на вузол):     maximum-pool-size = 10, connection-timeout = 5000 мс
+resale-postgres:         без ліміту CPU, без ліміту RAM; max_connections = 100; shared_buffers = 128MB
+                         PostgreSQL16.15onx86_64-pc-linux-musl,co
+resale-redis:            без ліміту CPU, без ліміту RAM; maxmemory-policy = volatile-lru; ключів = 4
+resale-lb (Nginx):       без ліміту CPU, без ліміту RAM; профіль: Round Robin (за замовчуванням): запити по черзі на кожен вузол
+
+--- Load Generator ---
+k6 0.54 (контейнер):     2.0 CPU; мережа public → лише Nginx (http://nginx)
+Ізоляція:                k6 обмежено 2.0 CPU, кожен вузол API — 1 CPU; генератор і SUT працюють на одному хості

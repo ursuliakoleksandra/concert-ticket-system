@@ -1,0 +1,8 @@
+NAME                                        CPU %     MEM USAGE / LIMIT
+concert-ticket-system-k6-run-c25edfafbcad   23.66%    31.65MiB / 6.698GiB
+resale-app2                                 115.22%   331.1MiB / 768MiB
+resale-app3                                 112.78%   329.8MiB / 768MiB
+resale-app1                                 93.01%    337.4MiB / 768MiB
+resale-lb                                   11.94%    26.6MiB / 6.698GiB
+resale-postgres                             25.87%    84.14MiB / 6.698GiB
+resale-redis                                0.93%     3.637MiB / 6.698GiB
