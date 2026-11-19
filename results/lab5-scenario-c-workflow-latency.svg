@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="380" viewBox="0 0 680 380" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-label="Перцентилі затримки залежно від навантаження">
+<rect width="680" height="380" fill="#fcfcfb"/>
+<text x="64" y="26" font-size="16" font-weight="600" fill="#0b0b0b">Перцентилі затримки залежно від навантаження</text>
+<text x="64" y="45" font-size="12" fill="#52514e">Scenario C — Complex Workflow; ступінь 30s, constant VUs</text>
+<line x1="64" y1="63" x2="86" y2="63" stroke="#2a78d6" stroke-width="2" stroke-dasharray=""/>
+<circle cx="75" cy="63" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/>
+<text x="92" y="67" font-size="12" fill="#0b0b0b">p50</text>
+<line x1="125" y1="63" x2="147" y2="63" stroke="#eb6834" stroke-width="2" stroke-dasharray="7 4"/>
+<circle cx="136" cy="63" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"/>
+<text x="153" y="67" font-size="12" fill="#0b0b0b">p95</text>
+<line x1="186" y1="63" x2="208" y2="63" stroke="#1baf7a" stroke-width="2" stroke-dasharray="2 3"/>
+<circle cx="197" cy="63" r="4" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"/>
+<text x="214" y="67" font-size="12" fill="#0b0b0b">p99</text>
+<line x1="64" y1="324" x2="588" y2="324" stroke="#9b9a95" stroke-width="1"/>
+<text x="56" y="328" font-size="11" text-anchor="end" fill="#52514e">0</text>
+<line x1="64" y1="274.8" x2="588" y2="274.8" stroke="#e4e3df" stroke-width="1"/>
+<text x="56" y="278.8" font-size="11" text-anchor="end" fill="#52514e">500</text>
+<line x1="64" y1="225.6" x2="588" y2="225.6" stroke="#e4e3df" stroke-width="1"/>
+<text x="56" y="229.6" font-size="11" text-anchor="end" fill="#52514e">1000</text>
+<line x1="64" y1="176.4" x2="588" y2="176.4" stroke="#e4e3df" stroke-width="1"/>
+<text x="56" y="180.4" font-size="11" text-anchor="end" fill="#52514e">1500</text>
+<line x1="64" y1="127.19999999999999" x2="588" y2="127.19999999999999" stroke="#e4e3df" stroke-width="1"/>
+<text x="56" y="131.2" font-size="11" text-anchor="end" fill="#52514e">2000</text>
+<line x1="64" y1="78" x2="588" y2="78" stroke="#e4e3df" stroke-width="1"/>
+<text x="56" y="82" font-size="11" text-anchor="end" fill="#52514e">2500</text>
+<text transform="translate(16 201) rotate(-90)" font-size="12" text-anchor="middle" fill="#52514e">Затримка, мс</text>
+<text x="64" y="342" font-size="11" text-anchor="middle" fill="#52514e">10</text>
+<text x="195" y="342" font-size="11" text-anchor="middle" fill="#52514e">25</text>
+<text x="326" y="342" font-size="11" text-anchor="middle" fill="#52514e">50</text>
+<text x="457" y="342" font-size="11" text-anchor="middle" fill="#52514e">100</text>
+<text x="588" y="342" font-size="11" text-anchor="middle" fill="#52514e">200</text>
+<text x="326" y="366" font-size="12" text-anchor="middle" fill="#52514e">VUs</text>
+<polyline fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="" points="64,323.0289496368 195,322.5363931356 326,322.5964496568 457,322.1488990524 588,322.0741372416"/>
+<circle cx="64" cy="323.0289496368" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>p50 · 10 VUs: 9.87 мс</title></circle>
+<circle cx="195" cy="322.5363931356" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>p50 · 25 VUs: 14.9 мс</title></circle>
+<circle cx="326" cy="322.5964496568" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>p50 · 50 VUs: 14.3 мс</title></circle>
+<circle cx="457" cy="322.1488990524" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>p50 · 100 VUs: 18.8 мс</title></circle>
+<circle cx="588" cy="322.0741372416" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>p50 · 200 VUs: 19.6 мс</title></circle>
+<polyline fill="none" stroke="#eb6834" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="7 4" points="64,316.58626671372 195,313.5123115692 326,295.681808031 457,259.84632856404005 588,198.64095391296004"/>
+<circle cx="64" cy="316.58626671372" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>p95 · 10 VUs: 75.3 мс</title></circle>
+<circle cx="195" cy="313.5123115692" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>p95 · 25 VUs: 107 мс</title></circle>
+<circle cx="326" cy="295.681808031" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>p95 · 50 VUs: 288 мс</title></circle>
+<circle cx="457" cy="259.84632856404005" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>p95 · 100 VUs: 652 мс</title></circle>
+<circle cx="588" cy="198.64095391296004" r="4" fill="#eb6834" stroke="#fcfcfb" stroke-width="2"><title>p95 · 200 VUs: 1274 мс</title></circle>
+<polyline fill="none" stroke="#1baf7a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="2 3" points="64,315.5023354572 195,306.18316453176 326,281.36496773220034 457,224.42558869281584 588,123.00051265605717"/>
+<circle cx="64" cy="315.5023354572" r="4" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"><title>p99 · 10 VUs: 86.4 мс</title></circle>
+<circle cx="195" cy="306.18316453176" r="4" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"><title>p99 · 25 VUs: 181 мс</title></circle>
+<circle cx="326" cy="281.36496773220034" r="4" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"><title>p99 · 50 VUs: 433 мс</title></circle>
+<circle cx="457" cy="224.42558869281584" r="4" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"><title>p99 · 100 VUs: 1012 мс</title></circle>
+<circle cx="588" cy="123.00051265605717" r="4" fill="#1baf7a" stroke="#fcfcfb" stroke-width="2"><title>p99 · 200 VUs: 2043 мс</title></circle>
+<text x="598" y="127.00051265605717" font-size="11" fill="#0b0b0b">p99 2043</text>
+<text x="598" y="202.64095391296004" font-size="11" fill="#0b0b0b">p95 1274</text>
+<text x="598" y="326.0741372416" font-size="11" fill="#0b0b0b">p50 19.6</text>
+</svg>

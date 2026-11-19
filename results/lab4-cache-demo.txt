@@ -1,0 +1,137 @@
+
+=== 1. MISS → HIT: перший запит читає БД, наступні — Redis (з будь-якого вузла) ===
+[LB] GET /api/events/1/listings?maxPrice=114184 → HTTP 200  [X-Instance-ID: app2]  [X-Cache: MISS]
+      {"content":[{"id":1,"ticketId":1,"seat":"Партер, ряд 3, місце 7","eventId":1,"sellerId":1,"price":650.00,"status":"ACTIVE","createdAt":"2026-10-21T20:45:48.093144Z"},{"id":2,"ticketId":3,"seat":"Балкон, ряд 1, місце 2","eventId":1,"sellerId":2,"price":700.00,"status":"ACTIVE","createdAt":"2026-10-21T20:45:48.093144Z"}],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalElements":2,"totalPages":1,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":2,"empty":false}
+  ✓ 200
+  ✓ X-Cache: MISS
+[LB] GET /api/events/1/listings?maxPrice=114184 → HTTP 200  [X-Instance-ID: app3]  [X-Cache: HIT]
+      {"content":[{"id":1,"ticketId":1,"seat":"Партер, ряд 3, місце 7","eventId":1,"sellerId":1,"price":650.00,"status":"ACTIVE","createdAt":"2026-10-21T20:45:48.093144Z"},{"id":2,"ticketId":3,"seat":"Балкон, ряд 1, місце 2","eventId":1,"sellerId":2,"price":700.00,"status":"ACTIVE","createdAt":"2026-10-21T20:45:48.093144Z"}],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalPages":1,"totalElements":2,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":2,"empty":false}
+  ✓ 200
+  ✓ X-Cache: HIT
+[LB] GET /api/events/1/listings?maxPrice=114184 → HTTP 200  [X-Instance-ID: app1]  [X-Cache: HIT]
+      {"content":[{"id":1,"ticketId":1,"seat":"Партер, ряд 3, місце 7","eventId":1,"sellerId":1,"price":650.00,"status":"ACTIVE","createdAt":"2026-10-21T20:45:48.093144Z"},{"id":2,"ticketId":3,"seat":"Балкон, ряд 1, місце 2","eventId":1,"sellerId":2,"price":700.00,"status":"ACTIVE","createdAt":"2026-10-21T20:45:48.093144Z"}],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalElements":2,"totalPages":1,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":2,"empty":false}
+  ✓ 200
+  ✓ X-Cache: HIT
+
+=== 2. Затримка: 30 холодних (MISS) і 30 гарячих (HIT) запитів через Nginx ===
+| Запит             |      N | avg, мс | p50, мс | p95, мс | max, мс |
+|------------------------|--------|----------|----------|----------|----------|
+| Cold (Cache MISS)      |     30 |     88.0 |     27.5 |    870.2 |    962.6 |
+| Hot (Cache HIT)        |     30 |     19.5 |     16.3 |     41.8 |     42.2 |
+
+X-Cache: холодних MISS 30/30, гарячих HIT 30/30
+
+=== 3. Інвалідація: кожна мутація оголошень події → наступне читання MISS зі свіжими даними ===
+[LB] POST /api/events              → HTTP 201  [X-Instance-ID: app2]
+      {"id":13268,"title":"Cache demo","venue":"Chernivtsi","startsAt":"2030-09-01T18:00:00Z","faceValue":500}
+  ✓ 201
+[LB] GET /api/events/13268/listings → HTTP 200  [X-Instance-ID: app3]  [X-Cache: MISS]
+      {"content":[],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalPages":0,"totalElements":0,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":0,"empty":true}
+  ✓ 200
+  ✓ X-Cache: MISS
+[LB] GET /api/events/13268/listings → HTTP 200  [X-Instance-ID: app1]  [X-Cache: HIT]
+      {"content":[],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalElements":0,"totalPages":0,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":0,"empty":true}
+  ✓ 200
+  ✓ X-Cache: HIT
+
+-- POST /api/listings (нове оголошення) --
+[LB] POST /api/tickets             → HTTP 201  [X-Instance-ID: app2]
+      {"id":52543,"eventId":13268,"eventTitle":"Cache demo","ownerId":1,"seat":"Cache-A1"}
+  ✓ 201
+[LB] POST /api/listings            → HTTP 201  [X-Instance-ID: app3]
+      {"id":52541,"ticketId":52543,"seat":"Cache-A1","eventId":13268,"sellerId":1,"price":550,"status":"ACTIVE","createdAt":"2026-10-29T19:33:09.754751193Z"}
+  ✓ 201
+[LB] GET /api/events/13268/listings → HTTP 200  [X-Instance-ID: app1]  [X-Cache: MISS]
+      {"content":[{"id":52541,"ticketId":52543,"seat":"Cache-A1","eventId":13268,"sellerId":1,"price":550.00,"status":"ACTIVE","createdAt":"2026-10-29T19:33:09.754751Z"}],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalElements":1,"totalPages":1,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":1,"empty":false}
+  ✓ 200
+  ✓ X-Cache: MISS
+  ✓ містить "id":52541,"ticketId"
+[LB] GET /api/events/13268/listings → HTTP 200  [X-Instance-ID: app2]  [X-Cache: HIT]
+      {"content":[{"id":52541,"ticketId":52543,"seat":"Cache-A1","eventId":13268,"sellerId":1,"price":550.00,"status":"ACTIVE","createdAt":"2026-10-29T19:33:09.754751Z"}],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalElements":1,"totalPages":1,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":1,"empty":false}
+  ✓ 200
+  ✓ X-Cache: HIT
+  ✓ містить "id":52541,"ticketId"
+
+-- POST /api/listings/{id}/purchase (продаж) --
+[LB] POST /api/listings/52541/purchase → HTTP 201  [X-Instance-ID: app3]
+      {"id":13265,"listingId":52541,"eventId":13268,"buyerId":3,"sellerId":1,"price":550.00,"createdAt":"2026-10-29T19:33:12.233610609Z"}
+  ✓ 201
+[LB] GET /api/events/13268/listings → HTTP 200  [X-Instance-ID: app1]  [X-Cache: MISS]
+      {"content":[],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalElements":0,"totalPages":0,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":0,"empty":true}
+  ✓ 200
+  ✓ X-Cache: MISS
+  ✓ не містить "id":52541,"ticketId"
+
+-- DELETE /api/listings/{id} (скасування) --
+[LB] POST /api/tickets             → HTTP 201  [X-Instance-ID: app2]
+      {"id":52544,"eventId":13268,"eventTitle":"Cache demo","ownerId":1,"seat":"Cache-A2"}
+  ✓ 201
+[LB] POST /api/listings            → HTTP 201  [X-Instance-ID: app3]
+      {"id":52542,"ticketId":52544,"seat":"Cache-A2","eventId":13268,"sellerId":1,"price":560,"status":"ACTIVE","createdAt":"2026-10-29T19:33:14.605645305Z"}
+  ✓ 201
+[LB] GET /api/events/13268/listings → HTTP 200  [X-Instance-ID: app1]  [X-Cache: MISS]
+      {"content":[{"id":52542,"ticketId":52544,"seat":"Cache-A2","eventId":13268,"sellerId":1,"price":560.00,"status":"ACTIVE","createdAt":"2026-10-29T19:33:14.605645Z"}],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalElements":1,"totalPages":1,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":1,"empty":false}
+  ✓ 200
+  ✓ X-Cache: MISS
+  ✓ містить "id":52542,"ticketId"
+[LB] DELETE /api/listings/52542    → HTTP 204  [X-Instance-ID: app2]
+  ✓ 204
+[LB] GET /api/events/13268/listings → HTTP 200  [X-Instance-ID: app3]  [X-Cache: MISS]
+      {"content":[],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalPages":0,"totalElements":0,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":0,"empty":true}
+  ✓ 200
+  ✓ X-Cache: MISS
+  ✓ не містить "id":52542,"ticketId"
+[LB] GET /api/events/13268/listings → HTTP 200  [X-Instance-ID: app1]  [X-Cache: HIT]
+      {"content":[],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalElements":0,"totalPages":0,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":0,"empty":true}
+  ✓ 200
+  ✓ X-Cache: HIT
+
+=== 4. Fallback: аварійна зупинка Redis — система працює напряму з БД ===
+[LB] POST /api/events              → HTTP 201  [X-Instance-ID: app2]
+      {"id":13269,"title":"Fallback demo","venue":"Chernivtsi","startsAt":"2030-10-01T18:00:00Z","faceValue":500}
+  ✓ 201
+[LB] POST /api/tickets             → HTTP 201  [X-Instance-ID: app3]
+      {"id":52545,"eventId":13269,"eventTitle":"Fallback demo","ownerId":1,"seat":"Fallback-1"}
+  ✓ 201
+[LB] POST /api/listings            → HTTP 201  [X-Instance-ID: app1]
+      {"id":52543,"ticketId":52545,"seat":"Fallback-1","eventId":13269,"sellerId":1,"price":550,"status":"ACTIVE","createdAt":"2026-10-29T19:33:20.587758316Z"}
+  ✓ 201
+[LB] POST /api/tickets             → HTTP 201  [X-Instance-ID: app2]
+      {"id":52546,"eventId":13269,"eventTitle":"Fallback demo","ownerId":1,"seat":"Fallback-2"}
+  ✓ 201
+[LB] POST /api/listings            → HTTP 201  [X-Instance-ID: app3]
+      {"id":52544,"ticketId":52546,"seat":"Fallback-2","eventId":13269,"sellerId":1,"price":550,"status":"ACTIVE","createdAt":"2026-10-29T19:33:22.665933093Z"}
+  ✓ 201
+ Container resale-redis Stopping 
+ Container resale-redis Stopped 
+resale-redis: exited
+[LB] GET /api/events/13269/listings → HTTP 200  [X-Instance-ID: app1]  [X-Cache: BYPASS]
+      {"content":[{"id":52544,"ticketId":52546,"seat":"Fallback-2","eventId":13269,"sellerId":1,"price":550.00,"status":"ACTIVE","createdAt":"2026-10-29T19:33:22.665933Z"},{"id":52543,"ticketId":52545,"seat":"Fallback-1","eventId":13269,"sellerId":1,"price":550.00,"status":"ACTIVE","createdAt":"2026-10-29T19:33:20.587758Z"}],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalElements":2,"totalPages":1,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":2,"empty":false}
+  ✓ 200
+  ✓ X-Cache: BYPASS
+  ✓ містить "id":52543,"ticketId"
+[LB] GET /api/events/13269/listings → HTTP 200  [X-Instance-ID: app2]  [X-Cache: BYPASS]
+      {"content":[{"id":52544,"ticketId":52546,"seat":"Fallback-2","eventId":13269,"sellerId":1,"price":550.00,"status":"ACTIVE","createdAt":"2026-10-29T19:33:22.665933Z"},{"id":52543,"ticketId":52545,"seat":"Fallback-1","eventId":13269,"sellerId":1,"price":550.00,"status":"ACTIVE","createdAt":"2026-10-29T19:33:20.587758Z"}],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalElements":2,"totalPages":1,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":2,"empty":false}
+  ✓ 200
+  ✓ X-Cache: BYPASS
+[LB] GET /api/events/13269/listings → HTTP 200  [X-Instance-ID: app3]  [X-Cache: BYPASS]
+      {"content":[{"id":52544,"ticketId":52546,"seat":"Fallback-2","eventId":13269,"sellerId":1,"price":550.00,"status":"ACTIVE","createdAt":"2026-10-29T19:33:22.665933Z"},{"id":52543,"ticketId":52545,"seat":"Fallback-1","eventId":13269,"sellerId":1,"price":550.00,"status":"ACTIVE","createdAt":"2026-10-29T19:33:20.587758Z"}],"pageable":{"pageNumber":0,"pageSize":20,"sort":{"empty":false,"sorted":true,"unsorted":false},"offset":0,"paged":true,"unpaged":false},"last":true,"totalPages":1,"totalElements":2,"first":true,"size":20,"number":0,"sort":{"empty":false,"sorted":true,"unsorted":false},"numberOfElements":2,"empty":false}
+  ✓ 200
+  ✓ X-Cache: BYPASS
+[LB] GET /health                   → HTTP 200  [X-Instance-ID: app1]
+      {"status":"DEGRADED","instance":"app1","checks":{"database":"UP","redis":"DOWN"}}
+  ✓ 200
+  ✓ містить "status":"DEGRADED"
+
+-- Купівля без Redis: перевірка бронювання пропускається, продаж гарантує PostgreSQL --
+[LB] POST /api/listings/52543/purchase → HTTP 201  [X-Instance-ID: app2]
+      {"id":13266,"listingId":52543,"eventId":13269,"buyerId":2,"sellerId":1,"price":550.00,"createdAt":"2026-10-29T19:33:28.103355946Z"}
+  ✓ 201
+
+-- Бронювання без Redis недоступне (очікувано 503) --
+[LB] POST /api/listings/52544/hold → HTTP 503  [X-Instance-ID: app3]
+      {"type":"about:blank","title":"Сервіс тимчасово недоступний","status":503,"detail":"Сховище даних недоступне, повторіть спробу пізніше","instance":"/api/listings/52544/hold"}
+  ✓ 503
+
+Запуск Redis і очікування перепідключення вузлів Container resale-redis Starting 
+ Container resale-redis Started 

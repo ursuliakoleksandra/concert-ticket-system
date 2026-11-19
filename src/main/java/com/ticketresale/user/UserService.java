@@ -5,6 +5,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.ticketresale.common.exception.ConflictException;
 import com.ticketresale.common.exception.NotFoundException;
+import com.ticketresale.db.DbRouting;
 import com.ticketresale.user.UserDtos.CreateUserRequest;
 
 @Service
@@ -24,8 +25,12 @@ public class UserService {
         return users.save(new AppUser(request.email().toLowerCase(), request.fullName().trim()));
     }
 
+    /**
+     * ЛР6: профіль користувача — дані автентифікації (Strong Consistency), тому читання з primary:
+     * щойно зареєстрований користувач має одразу проходити перевірки бронювання й купівлі.
+     */
     @Transactional(readOnly = true)
     public AppUser get(Long id) {
-        return users.findById(id).orElseThrow(() -> new NotFoundException("Користувача", id));
+        return DbRouting.strict(() -> users.findById(id).orElseThrow(() -> new NotFoundException("Користувача", id)));
     }
 }

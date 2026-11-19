@@ -1,0 +1,8 @@
+NAME                                        CPU %     MEM USAGE / LIMIT
+concert-ticket-system-k6-run-5ae7a4faa8df   26.17%    32.1MiB / 6.698GiB
+resale-app3                                 101.96%   328.3MiB / 768MiB
+resale-app2                                 102.14%   334.4MiB / 768MiB
+resale-app1                                 101.45%   328.1MiB / 768MiB
+resale-lb                                   18.39%    26.59MiB / 6.698GiB
+resale-postgres                             5.16%     77.52MiB / 6.698GiB
+resale-redis                                21.24%    3.648MiB / 6.698GiB

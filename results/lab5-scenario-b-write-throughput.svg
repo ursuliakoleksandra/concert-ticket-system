@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="380" viewBox="0 0 680 380" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" role="img" aria-label="Throughput залежно від навантаження">
+<rect width="680" height="380" fill="#fcfcfb"/>
+<text x="64" y="26" font-size="16" font-weight="600" fill="#0b0b0b">Throughput залежно від навантаження</text>
+<text x="64" y="45" font-size="12" fill="#52514e">Scenario B — Write-Intensive; ступінь 30s, constant VUs</text>
+<line x1="64" y1="324" x2="588" y2="324" stroke="#9b9a95" stroke-width="1"/>
+<text x="56" y="328" font-size="11" text-anchor="end" fill="#52514e">0</text>
+<line x1="64" y1="274.8" x2="588" y2="274.8" stroke="#e4e3df" stroke-width="1"/>
+<text x="56" y="278.8" font-size="11" text-anchor="end" fill="#52514e">200</text>
+<line x1="64" y1="225.6" x2="588" y2="225.6" stroke="#e4e3df" stroke-width="1"/>
+<text x="56" y="229.6" font-size="11" text-anchor="end" fill="#52514e">400</text>
+<line x1="64" y1="176.4" x2="588" y2="176.4" stroke="#e4e3df" stroke-width="1"/>
+<text x="56" y="180.4" font-size="11" text-anchor="end" fill="#52514e">600</text>
+<line x1="64" y1="127.19999999999999" x2="588" y2="127.19999999999999" stroke="#e4e3df" stroke-width="1"/>
+<text x="56" y="131.2" font-size="11" text-anchor="end" fill="#52514e">800</text>
+<line x1="64" y1="78" x2="588" y2="78" stroke="#e4e3df" stroke-width="1"/>
+<text x="56" y="82" font-size="11" text-anchor="end" fill="#52514e">1000</text>
+<text transform="translate(16 201) rotate(-90)" font-size="12" text-anchor="middle" fill="#52514e">Throughput, RPS</text>
+<text x="64" y="342" font-size="11" text-anchor="middle" fill="#52514e">10</text>
+<text x="195" y="342" font-size="11" text-anchor="middle" fill="#52514e">25</text>
+<text x="326" y="342" font-size="11" text-anchor="middle" fill="#52514e">50</text>
+<text x="457" y="342" font-size="11" text-anchor="middle" fill="#52514e">100</text>
+<text x="588" y="342" font-size="11" text-anchor="middle" fill="#52514e">200</text>
+<text x="326" y="366" font-size="12" text-anchor="middle" fill="#52514e">VUs</text>
+<polyline fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="" points="64,256.6452 195,213.7428 326,191.7832 457,173.15279999999998 588,158.5814"/>
+<circle cx="64" cy="256.6452" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>RPS · 10 VUs: 274 RPS</title></circle>
+<circle cx="195" cy="213.7428" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>RPS · 25 VUs: 448 RPS</title></circle>
+<circle cx="326" cy="191.7832" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>RPS · 50 VUs: 537 RPS</title></circle>
+<circle cx="457" cy="173.15279999999998" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>RPS · 100 VUs: 613 RPS</title></circle>
+<circle cx="588" cy="158.5814" r="4" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"><title>RPS · 200 VUs: 672 RPS</title></circle>
+<text x="598" y="162.5814" font-size="11" fill="#0b0b0b">RPS 672</text>
+</svg>

@@ -1,0 +1,9 @@
+Профіль: Weighted Round Robin: імітація гетерогенних вузлів (app1 потужніший — вага 3)
+Запитів: 30 → http://localhost:8080/api/events
+
+Послідовність: app1 app2 app1 app3 app1 app1 app2 app1 app3 app1 app1 app2 app1 app3 app1 app1 app2 app1 app3 app1 app1 app2 app1 app3 app1 app1 app2 app1 app3 app1 
+
+Instance     Запитів Частка
+app1               18      60%
+app2                6      20%
+app3                6      20%

@@ -1,0 +1,2 @@
+vus,requests,rps,avg_ms,p50_ms,p95_ms,p99_ms,max_ms,error_pct
+50,4428,147.6,341.3,91.7,1301.9,1882.8,3229.8,0.00

@@ -1,0 +1,7 @@
+Профіль: IP Hash: прив'язка клієнта до вузла за IP-адресою (мережева sticky session)
+Запитів: 30 → http://localhost:8080/api/events
+
+Послідовність: app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 app1 
+
+Instance     Запитів Частка
+app1               30     100%

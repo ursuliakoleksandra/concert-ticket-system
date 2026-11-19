@@ -5,7 +5,22 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="b71136d3-1482-4770-ab90-208799e59b14" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/nginx/upstreams/active.conf" beforeDir="false" afterPath="$PROJECT_DIR$/nginx/upstreams/active.conf" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/lab2-cross-instance.txt" beforeDir="false" afterPath="$PROJECT_DIR$/results/lab2-cross-instance.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/lab2-instance-loss.txt" beforeDir="false" afterPath="$PROJECT_DIR$/results/lab2-instance-loss.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/scale-1.json" beforeDir="false" afterPath="$PROJECT_DIR$/results/scale-1.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/scale-1.row" beforeDir="false" afterPath="$PROJECT_DIR$/results/scale-1.row" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/scale-1.txt" beforeDir="false" afterPath="$PROJECT_DIR$/results/scale-1.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/scale-2.json" beforeDir="false" afterPath="$PROJECT_DIR$/results/scale-2.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/scale-2.row" beforeDir="false" afterPath="$PROJECT_DIR$/results/scale-2.row" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/scale-2.txt" beforeDir="false" afterPath="$PROJECT_DIR$/results/scale-2.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/scale-3.json" beforeDir="false" afterPath="$PROJECT_DIR$/results/scale-3.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/scale-3.row" beforeDir="false" afterPath="$PROJECT_DIR$/results/scale-3.row" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/scale-3.txt" beforeDir="false" afterPath="$PROJECT_DIR$/results/scale-3.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/warmup.json" beforeDir="false" afterPath="$PROJECT_DIR$/results/warmup.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/warmup.row" beforeDir="false" afterPath="$PROJECT_DIR$/results/warmup.row" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/results/warmup.txt" beforeDir="false" afterPath="$PROJECT_DIR$/results/warmup.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
