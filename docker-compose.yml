@@ -1,4 +1,5 @@
-# Ticket Resale: Nginx (єдина точка входу) → 3 stateless-екземпляри API → PostgreSQL + Redis
+# Ticket Resale: Nginx (єдина точка входу) → 3 stateless-екземпляри API →
+#   PostgreSQL primary + read replica (ЛР6), 2 шарди журналу операцій (ЛР7), Redis
 #
 #   docker compose up -d --build        — підняти весь стек
 #   http://localhost:8080               — єдина зовнішня адреса (Nginx)
@@ -13,6 +14,12 @@ x-app: &app
     - backend
   depends_on:
     postgres:
+      condition: service_healthy
+    postgres-replica:
+      condition: service_healthy
+    shard-a:
+      condition: service_healthy
+    shard-b:
       condition: service_healthy
     redis:
       condition: service_healthy
@@ -38,24 +45,117 @@ x-app-env: &app-env
   CACHE_ENABLED: ${CACHE_ENABLED:-true}
   # ЛР5: для навантажувальних тестів ліміт піднімається, інакше k6 отримував би 429
   RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-20}
+  # ЛР6: репліка для читань; false — топологія Single Primary
+  DB_REPLICA_URL: jdbc:postgresql://postgres-replica:5432/ticket_resale
+  READ_REPLICA_ENABLED: ${READ_REPLICA_ENABLED:-true}
+  READ_YOUR_WRITES_ENABLED: ${READ_YOUR_WRITES_ENABLED:-true}
+  # ЛР7: шарди журналу операцій і функція маршрутизації (modulo | hash | consistent)
+  SHARD_URLS: ${SHARD_URLS:-shard-a=jdbc:postgresql://shard-a:5432/ledger,shard-b=jdbc:postgresql://shard-b:5432/ledger}
+  SHARD_STRATEGY: ${SHARD_STRATEGY:-consistent}
+  # ЛР8: захист кешу статистики (none | lock), TTL Jitter, Negative Caching, «вартість» агрегації
+  STATS_PROTECTION: ${STATS_PROTECTION:-lock}
+  STATS_TTL: ${STATS_TTL:-30s}
+  STATS_TTL_JITTER: ${STATS_TTL_JITTER:-0.2}
+  NEGATIVE_CACHE: ${NEGATIVE_CACHE:-true}
+  STATS_QUERY_COST: ${STATS_QUERY_COST:-200ms}
 
 services:
+  # ЛР6: Primary — приймає всі мутації; журнал WAL передається репліці потоковою реплікацією
   postgres:
     image: postgres:16-alpine
     container_name: resale-postgres
+    command:
+      - postgres
+      - -c
+      - hba_file=/replication/pg_hba.conf
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      # Запас WAL на випадок короткочасного відставання репліки
+      - -c
+      - wal_keep_size=256MB
     environment:
       POSTGRES_DB: ticket_resale
       POSTGRES_USER: resale
       POSTGRES_PASSWORD: resale
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./db/replication:/replication:ro
     networks:
       - backend
+    # ЛР6: однакові ресурси primary і replica — для чесного порівняння Single Primary і Primary + Replica
+    cpus: "1.0"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U resale -d ticket_resale"]
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
+
+  # ЛР6: Read Replica (Hot Standby) — асинхронно відтворює WAL з primary, відкрита лише для читання
+  postgres-replica:
+    image: postgres:16-alpine
+    container_name: resale-postgres-replica
+    user: postgres
+    entrypoint: ["/bin/sh", "/replication/replica-entrypoint.sh"]
+    environment:
+      PRIMARY_HOST: postgres
+      POSTGRES_DB: ticket_resale
+      POSTGRES_USER: resale
+      POSTGRES_PASSWORD: resale
+      REPLICATION_PASSWORD: replicator
+      # Штучна затримка застосування WAL (демонстрація Stale Read): 0 | 3s | 10s …
+      REPLICA_APPLY_DELAY: ${REPLICA_APPLY_DELAY:-0}
+    volumes:
+      - pgreplica:/var/lib/postgresql/data
+      - ./db/replication:/replication:ro
+    networks:
+      - backend
+    cpus: "1.0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resale -d ticket_resale"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # ЛР7: два незалежні шарди журналу операцій (ключ шардингу — user_id). Схему створює застосунок (Flyway)
+  shard-a:
+    image: postgres:16-alpine
+    container_name: resale-shard-a
+    environment: &shard-env
+      POSTGRES_DB: ledger
+      POSTGRES_USER: resale
+      POSTGRES_PASSWORD: resale
+    volumes:
+      - shard-a-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    # Однакові ресурси шардів — щоб перевантаження одного шарду (Hot Shard) було видно
+    cpus: "1.0"
+    healthcheck: &shard-healthcheck
+      test: ["CMD-SHELL", "pg_isready -U resale -d ledger"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  shard-b:
+    image: postgres:16-alpine
+    container_name: resale-shard-b
+    environment: *shard-env
+    volumes:
+      - shard-b-data:/var/lib/postgresql/data
+    networks:
+      - backend
+    cpus: "1.0"
+    healthcheck: *shard-healthcheck
     restart: unless-stopped
 
   redis:
@@ -141,6 +241,9 @@ services:
 
 volumes:
   pgdata:
+  pgreplica:
+  shard-a-data:
+  shard-b-data:
   redisdata:
 
 networks:

@@ -17,7 +17,9 @@ import com.ticketresale.common.ResaleRules;
 import com.ticketresale.common.exception.BusinessRuleException;
 import com.ticketresale.common.exception.ConflictException;
 import com.ticketresale.common.exception.NotFoundException;
+import com.ticketresale.db.DbRouting;
 import com.ticketresale.hold.ListingHoldStore;
+import com.ticketresale.ledger.LedgerService;
 import com.ticketresale.listing.Listing;
 import com.ticketresale.listing.ListingRepository;
 import com.ticketresale.user.AppUser;
@@ -44,10 +46,11 @@ public class PurchaseService {
     private final ListingHoldStore holds;
     private final ResaleRules rules;
     private final ListingCache listingCache;
+    private final LedgerService ledger;
 
     public PurchaseService(ListingRepository listings, PurchaseRepository purchases, UserRepository users,
                            UserService userService, ListingHoldStore holds, ResaleRules rules,
-                           ListingCache listingCache) {
+                           ListingCache listingCache, LedgerService ledger) {
         this.listings = listings;
         this.purchases = purchases;
         this.users = users;
@@ -55,6 +58,7 @@ public class PurchaseService {
         this.holds = holds;
         this.rules = rules;
         this.listingCache = listingCache;
+        this.ledger = ledger;
     }
 
     @Transactional
@@ -94,7 +98,8 @@ public class PurchaseService {
         listing.getTicket().transferTo(buyer);
         Purchase purchase = purchases.save(new Purchase(listing, buyerId));
 
-        // 6. Після успішного COMMIT: зняти бронювання та інвалідувати кеш оголошень події (ЛР4)
+        // 6. Після успішного COMMIT: зняти бронювання, інвалідувати кеш оголошень події (ЛР4)
+        //    і записати операції BUY/SELL у журнал на шардах покупця і продавця (ЛР7, Cross-Shard Write)
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
@@ -102,6 +107,12 @@ public class PurchaseService {
                     holds.forceRelease(listingId);
                 } catch (DataAccessException e) {
                     log.warn("Не вдалося зняти бронювання {} (Redis недоступний): {}", listingId, e.getMessage());
+                }
+                try {
+                    // Купівля вже зафіксована в primary; журнал — похідні дані, їх збій не скасовує угоду
+                    ledger.recordPurchase(purchase);
+                } catch (RuntimeException e) {
+                    log.warn("Журнал операцій для покупки {} не оновлено: {}", purchase.getId(), e.getMessage());
                 }
             }
         });
@@ -118,9 +129,12 @@ public class PurchaseService {
         }
     }
 
+    /** ЛР6: Strong Consistency — підтвердження транзакцій покупця, читання з primary. */
     @Transactional(readOnly = true)
     public List<Purchase> findByBuyer(Long buyerId) {
-        userService.get(buyerId);
-        return purchases.findByBuyerIdOrderByCreatedAtDesc(buyerId);
+        return DbRouting.strict(() -> {
+            userService.get(buyerId);
+            return purchases.findByBuyerIdOrderByCreatedAtDesc(buyerId);
+        });
     }
 }
